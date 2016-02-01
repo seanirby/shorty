@@ -23,18 +23,13 @@
 ;;; Commentary:
 ;;
 ;;; Code:
-
-
 (require 'manage-minor-mode)
 
 (defvar shorty-debug nil)
-
 (defvar shorty-update-period 0.05
-  "defines how fast shorty will play a macro demo.
-value represents the number of seconds between individual keypresses.")
-;; todo use this to make prompt-base in shorty-read-prompt
-(defvar shorty-actions '(?q "[q]uit" ?t "[t]ry it out" ?r "[r]eplay"))
+  "Defines how fast shorty will play a macro demo.
 
+Value represents the number of seconds between individual key/chord presses.")
 (defvar shorty-buffer-name "*shorty*")
 (defvar shorty-messages-buffer-name "*shorty-messages*")
 
@@ -79,7 +74,6 @@ properties."
 
               (t
                (message "ERROR: The :TEXT: property you provided, %s, is not a keyword or a string." text-val)))))))
-;; TODO kinda similar to the function above
 
 (defun shorty-demo-props-modes (elmt elmt-root)
   "Try getting :MODES: property from ELMT or ELMT-ROOT.
@@ -129,7 +123,7 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
   (let ((title (plist-get props :title))
         (text (plist-get props :text))
         (modes (plist-get props :modes)))
-    (with-current-buffer demo-buffer
+(with-current-buffer demo-buffer
       (add-hook 'pre-command-hook 'shorty-log-command nil t)
       (mapc (lambda (mode) (funcall mode 1)) modes)
       (erase-buffer)
@@ -157,21 +151,7 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
     (dolist (key (shorty-macro-string-to-list macro))
       (with-current-buffer demo-buffer
         (sit-for update-period)
-        (execute-kbd-macro (vector key)))
-      ;;TODO Currently has issues because char to string does't work for ?\M-:
-      ;; see what command log mode does
-      ;;(message (edmacro-format-keys (char-to-string key) t))
-      ;; (with-current-buffer messages-buffer
-      ;;   (goto-char (point-max))
-      ;;   (newline)
-      ;;   (insert (edmacro-format-keys (char-to-string key)))
-      ;;   (newline)
-      ;;   (insert (key-binding (char-to-string key) t))
-      ;;   )
-      )
-
-    (with-current-buffer demo-buffer (redisplay))
-    (with-current-buffer messages-buffer (redisplay))))
+        (execute-kbd-macro (vector key))))))
 
 (defun shorty--demo-open (args)
   "internal function"
