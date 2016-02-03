@@ -22,28 +22,88 @@
 ;;
 ;;; Commentary:
 ;;
-;;; Code:
+;;* Code:
+
+;;** Dependencies
 (require 'manage-minor-mode)
 
-(defvar shorty-debug nil)
+;;** Config Vars
 (defvar shorty-update-period 0.05
   "Defines how fast shorty will play a macro demo.
-
 Value represents the number of seconds between individual key/chord presses.")
 (defvar shorty-buffer-name "*shorty*")
 (defvar shorty-messages-buffer-name "*shorty-messages*")
 
-(defun shorty--flatten (lst)
+;;** Mode Actions
+(defun shorty-demo-quit ()
+  (interactive)
+  (message "quitting demo"))
+
+(defun shorty-demo-previous ()
+  (interactive)
+  (message "goign to last demo"))
+
+(defun shorty-demo-next ()
+  (interactive)
+  (message "going to next demo"))
+
+(defun shorty-album-play ()
+  (interactive)
+  (message "playing album"))
+
+(defun shorty-album-demo-play ()
+  (interactive)
+  (message "playing album-demo"))
+
+(defun shorty-album-build ()
+  (interactive)
+  (message "building album"))
+
+;;** Key Maps
+(defvar shorty-demo-mode-map
+  (let ((map (make-keymap)))
+    (suppress-keymap map t)
+    (define-key map "q" 'shorty-demo-quit)
+    (define-key map "p" 'shorty-demo-previous)
+    (define-key map "n" 'shorty-demo-next)
+    map)
+  )
+
+(defvar shorty-album-mode-map
+  (let ((map (make-keymap)))
+    ;;(suppress-keymap map t)
+    (define-key map (kbd "C-, p") 'shorty-album-play)
+    (define-key map (kbd "C-, o") 'shorty-album-demo-play)
+    (define-key map (kbd "C-, b") 'shorty-album-build)
+    map)
+  )
+
+;;** Modes
+(define-minor-mode
+  shorty-demo-mode
+  "TODO Used to navigate demos from inside inside a shorty demo buffer"
+  :lighter "ShortyDemo"
+  :keymap shorty-demo-mode-map)
+
+(define-minor-mode
+  shorty-album-mode
+  "TODO Used to build and play demos from within a shorty album"
+  :lighter "ShortyAlbum"
+  :keymap shorty-album-mode-map)
+
+;;** Helpers
+(defun shorty-flatten (lst)
   "Flattens a list LST"
   (cond ((null lst) nil)
-        ((listp lst) (append (shorty--flatten (car lst)) (shorty--flatten (cdr lst))))
+        ((listp lst) (append (shorty-flatten (car lst)) (shorty-flatten (cdr lst))))
         (t (list lst))))
 
-(defun shorty-macro-string-to-list (macro-str)
+;;** Demos
+(defun shorty-demo-macro-string-to-list (macro-str)
   "Convert a human-readable macro string, MACRO-STR, to elisp-readable vector format."
   (cl-flet ((f (key-seq-str)
                (mapcar 'identity (edmacro-parse-keys key-seq-str t))))
-    (shorty--flatten (mapcar #'f (split-string macro-str)))))
+    (shorty-flatten (mapcar #'f (split-string macro-str)))))
 
 (defun shorty-is-demo? (elmt)
   "Returns true if ELMT is a demo."
@@ -51,7 +111,6 @@ Value represents the number of seconds between individual key/chord presses.")
         (has-text-p (org-element-property :TEXT elmt)))
     (and has-macro-p has-text-p)))
 
-;; TODO
 (defun shorty-is-demo-group? (elmt)
   "Returns true if ELMT is a demo group."
   nil)
@@ -69,20 +128,34 @@ properties."
                text-val)
 
               ((keywordp text-val)
-               ;; Might not be the best way to access the root element
+               ;; TODO Not be the best way to access the root element
                (org-element-property text-val (nth 2 elmt-root)))
 
               (t
                (message "ERROR: The :TEXT: property you provided, %s, is not a keyword or a string." text-val)))))))
 
-(defun shorty-demo-props-modes (elmt elmt-root)
-  "Try getting :MODES: property from ELMT or ELMT-ROOT.
+(defun shorty-demo-props-major-mode (elmt elmt-root)
+  "Try to get minor mode from :MAJORMODE: property.
 
-If ELMT has no :MODES: property try retrieving it from ELMT-ROOT's
-properties."
-  (let ((root-modes (eval (read (or (org-element-property :MODES (nth 2 elmt-root)) "nil"))))
-        (demo-modes (eval (read (or (org-element-property :MODES elmt) "nil")))))
-    (append root-modes demo-modes)))
+The property is first looked for in ELMT.  Otherwise it is looked for
+in ELMT-ROOT.  If the property can't be found nil is returned."
+  (let ((major-mode (eval (read (or (org-element-property :MAJORMODE elmt)
+                                    (org-element-property :MAJORMODE (nth 2 elmt-root))
+                                    "nil")))))
+    (if (or (equal nil major-mode) (symbolp major-mode))
+        major-mode
+      (message "ERROR: The :MAJORMODE: property you provided, %s, is not a symbol." major-mode))))
+
+(defun shorty-demo-props-minor-modes (elmt elmt-root)
+  "Try getting modes list from :MINORMODES: property in ELMT and ELMT-ROOT.
+
+The two lists will be appended and returned."
+  (let ((root-modes (eval (read (or (org-element-property :MINORMODES (nth 2 elmt-root)) "nil"))))
+        (demo-modes (eval (read (or (org-element-property :MINORMODES elmt) "nil")))))
+    (if (and (or (equal nil root-modes) (consp root-modes))
+             (or (equal nil demo-modes) (consp demo-modes)))
+        (append root-modes demo-modes)
+      (message "ERROR: The :MINORMODES: properties you've provided, %s and %s, are not lists." root-modes demo-modes))))
 
 (defun shorty-demo-props-macro (elmt)
   "Try getting :MACRO: property from ELMT."
@@ -101,11 +174,51 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
   (let ((title (org-element-property :raw-value elmt))
         (macro (shorty-demo-props-macro elmt))
         (text  (shorty-demo-props-text elmt elmt-root))
-        (modes (shorty-demo-props-modes elmt elmt-root)))
-    (message-box title)
-    (list :title title :macro macro :text text :modes modes)))
+        (major-mode (shorty-demo-props-major-mode elmt elmt-root))
+        (minor-modes (shorty-demo-props-minor-modes elmt elmt-root)))
+    (list :title title
+          :macro macro
+          :text text
+          :major-mode major-mode
+          :minor-modes minor-modes)))
 
-(defun shorty-log-command ()
+(defun shorty-demo-press-keys (demo-buffer messages-buffer macro)
+  "Slowly executes the macro referred to by the macro arg."
+  (let (key
+        (update-period (if shorty-debug 0.5 shorty-update-period)))
+    (dolist (key (shorty-demo-macro-string-to-list macro))
+      (with-current-buffer demo-buffer
+        (sit-for update-period)
+        (execute-kbd-macro (vector key))))))
+
+(defun shorty-demo-open-internal (props)
+  "internal function"
+  (let* ((messages-buffer (or (get-buffer shorty-messages-buffer-name)
+                              (generate-new-buffer shorty-messages-buffer-name)))
+         (demo-buffer     (or (get-buffer shorty-buffer-name)
+                              (generate-new-buffer shorty-buffer-name))))
+    (shorty-buffers-display demo-buffer messages-buffer)
+    (shorty-buffers-init demo-buffer messages-buffer props)
+    (condition-case err
+        (shorty-demo-press-keys demo-buffer messages-buffer (plist-get props :macro))
+      (error (message err)))
+    (run-hooks 'shorty-demo-end-hook)))
+
+(defun shorty-demo-open ()
+  (interactive)
+  (let* ((elmt (org-element-at-point))
+         (elmt-root (org-element-parse-buffer)))
+    (cond ((shorty-is-demo? elmt)
+           (let ((props (shorty-demo-props elmt elmt-root)))
+             (shorty-demo-open-internal props)))
+
+          ((shorty-is-demo-group? elmt)
+           (message "demogroup found"))
+
+          (t (message "something went wrong")))))
+
+;;** Messages
+(defun shorty-messages-log-command ()
   ""
   (let ((messages-buffer (get-buffer shorty-messages-buffer-name)))
     (when messages-buffer
@@ -114,18 +227,23 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
         (newline)
         (insert (prin1-to-string this-command))))))
 
-(defun shorty-remove-log-command-hook ()
+(defun shorty-messages-remove-log-command-hook ()
   ""
-  (remove-hook 'pre-command-hook 'shorty-log-command t))
+  (remove-hook 'pre-command-hook 'shorty-messages-log-command t))
 
-(defun shorty-init-buffer (demo-buffer messages-buffer props)
+;;** Buffers
+(defun shorty-buffers-init (demo-buffer messages-buffer props)
   "Places buffer in a state such that a demo can be run."
   (let ((title (plist-get props :title))
         (text (plist-get props :text))
-        (modes (plist-get props :modes)))
-(with-current-buffer demo-buffer
+        (major-mode (plist-get props :major-mode))
+        (minor-modes (plist-get props :minor-modes)))
+    (with-current-buffer demo-buffer
       (add-hook 'pre-command-hook 'shorty-log-command nil t)
-      (mapc (lambda (mode) (funcall mode 1)) modes)
+      (when major-mode
+        (funcall major-mode))
+      (manage-minor-mode-bals)
+      (mapc (lambda (mode) (funcall mode 1)) minor-modes)
       (erase-buffer)
       (insert text)
       (mapc (lambda (_) (newline)) (number-sequence 0 10))
@@ -135,7 +253,7 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
       (erase-buffer)
       (insert title))))
 
-(defun shorty-display-buffer (demo-buffer messages-buffer)
+(defun shorty-buffers-display (demo-buffer messages-buffer)
   (with-current-buffer demo-buffer
     (run-hooks 'shorty-pre-display-buffer-hook))
   (let ((window (display-buffer demo-buffer nil)))
@@ -144,64 +262,11 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
   (with-current-buffer demo-buffer
     (run-hooks 'shorty-post-display-buffer-hook)))
 
-(defun shorty-press-keys (demo-buffer messages-buffer macro)
-  "Slowly executes the macro referred to by the macro arg."
-  (let (key
-        (update-period (if shorty-debug 0.5 shorty-update-period)))
-    (dolist (key (shorty-macro-string-to-list macro))
-      (with-current-buffer demo-buffer
-        (sit-for update-period)
-        (execute-kbd-macro (vector key))))))
-
-(defun shorty--demo-open (args)
-  "internal function"
-  ;; Display buffer
-  (let* ((messages-buffer (or (get-buffer shorty-messages-buffer-name)
-                              (generate-new-buffer shorty-messages-buffer-name)))
-         (demo-buffer (or (get-buffer shorty-buffer-name)
-                          (generate-new-buffer shorty-buffer-name))))
-    (shorty-display-buffer demo-buffer messages-buffer)
-    ;; Initialize buffer
-    (shorty-init-buffer demo-buffer messages-buffer args)
-    ;; Press keys
-    (condition-case err
-        (shorty-press-keys demo-buffer messages-buffer (plist-get args :macro))
-      (error (message err)))
-    (run-hooks 'shorty-demo-end-hook)))
-
-(defun shorty-demo-open ()
-  "
-1. get demo, verify.
-1. gets ast
-2. searches level text, if it's a keyword string keep go up to next level and search, repeat
-if its a string use that.
-3. collects all :macro from here to root and prepends them to current :macro
-4. if an entry just has a single child then it is a demo!
-"
-  (interactive)
-  (let* ((elmt (org-element-at-point))
-         (elmt-root (org-element-parse-buffer)))
-    (cond ((shorty-is-demo? elmt)
-           (let ((props (shorty-demo-props elmt elmt-root)))
-             (shorty--demo-open props)))
-
-          ((shorty-is-demo-group? elmt)
-           (message "demogroup found"))
-
-          (t (message "something went wrong")))))
-
-;;** WINDOWING
-(setq shorty-pre-display-buffer-hook nil)
-(setq shorty-post-display-buffer-hook nil)
-(setq shorty-buffer-initialize-hook nil)
-(setq shorty-demo-end-hook nil)
-(setq shorty-quit-hook nil)
-
+;;** Windows
 (defvar shorty-inhibit-save-previous-winconf nil)
 
 (defvar-local shorty-previous-window-configuration nil)
 
-;; Borrowed this code from magit :)
 (defun shorty-save-window-configuration ()
   "Save the current window configuration.
 Later, when the buffer is buried, it may be restored by
@@ -229,19 +294,21 @@ Later, when the buffer is buried, it may be restored by
 
 (global-set-key (kbd "C-<f6>") 'shorty-restore-window-configuration)
 
+;;** Hooks
+(setq shorty-pre-display-buffer-hook nil)
+(setq shorty-post-display-buffer-hook nil)
+(setq shorty-buffer-initialize-hook nil)
+(setq shorty-demo-end-hook nil)
+(setq shorty-quit-hook nil)
+
 (add-hook 'shorty-pre-display-buffer-hook 'shorty-save-window-configuration)
-
 (add-hook 'shorty-post-display-buffer-hook 'shorty-save-window-configuration)
-(add-hook 'shorty-post-display-buffer-hook 'manage-minor-mode-bals)
-
-(add-hook 'shorty-demo-end-hook 'shorty-remove-log-command-hook)
+(add-hook 'shorty-demo-end-hook 'shorty-messages-remove-log-command-hook)
 (add-hook 'shorty-demo-end-hook 'manage-minor-mode-restore-from-bals)
-
-
 (add-hook 'shorty-quit-hook 'manage-minor-mode-restore-from-bals)
 (add-hook 'shorty-quit-hook 'shorty-restore-window-configuration)
 
-;;** DEV ONLY
+;;** Dev
 (global-set-key (kbd "C-<f5>") (lambda ()
                                  (interactive)
                                  (manage-minor-mode-restore-from-bals)))
@@ -271,11 +338,5 @@ Later, when the buffer is buried, it may be restored by
                     (shorty-demo-open))))
 
 (setq shorty-debug t)
-;; (with-current-buffer "shorty.org<shorty>"
-;;   (save-excursion
-;;     (goto-char (point-min))
-;;     (re-search-forward "demo2" nil t nil)
-;;     (shorty-demo-open)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; shorty.el ends here
