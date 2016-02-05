@@ -33,18 +33,31 @@
 Value represents the number of seconds between individual key/chord presses.")
 (defvar shorty-buffer-name "*shorty*")
 (defvar shorty-messages-buffer-name "*shorty-messages*")
+(defvar shorty-album-current nil)
 
 ;;** Mode Actions
 (defun shorty-demo-quit ()
   (interactive)
-  (message "quitting demo"))
+  (run-hooks 'shorty-demo-quit-hook))
 
 (defun shorty-demo-previous ()
   (interactive)
+  (shorty-demo-mode 0)
   (message "goign to last demo"))
+
+(defun shorty-demo-replay ()
+  (interactive)
+  (message "replaying demo")
+  (shorty-demo-mode 0)
+  (let (props)
+    (with-current-buffer shorty-album-current
+      (setq props (shorty-demo-props (org-element-at-point)
+                                     (org-element-parse-buffer))))
+    (shorty-demo-open-internal props t)))
 
 (defun shorty-demo-next ()
   (interactive)
+  (shorty-demo-mode 0)
   (message "going to next demo"))
 
 (defun shorty-album-play ()
@@ -65,6 +78,7 @@ Value represents the number of seconds between individual key/chord presses.")
     (suppress-keymap map t)
     (define-key map "q" 'shorty-demo-quit)
     (define-key map "p" 'shorty-demo-previous)
+    (define-key map "r" 'shorty-demo-replay)
     (define-key map "n" 'shorty-demo-next)
     map))
 
@@ -90,6 +104,12 @@ Value represents the number of seconds between individual key/chord presses.")
   :lighter "ShortyAlbum"
   :keymap shorty-album-mode-map)
 
+(defun shorty-demo-mode-turn-on ()
+  (shorty-demo-mode 1))
+
+(defun shorty-demo-mode-turn-off ()
+  (shorty-demo-mode 0))
+
 ;;** Helpers
 (defun shorty-flatten (lst)
   "Flattens a list LST"
@@ -111,6 +131,9 @@ Value represents the number of seconds between individual key/chord presses.")
   ""
   (remove-hook 'pre-command-hook 'shorty-messages-log-command t))
 ;;** Demos
+(defvar shorty-demo-current nil) ;;a reference to the current demo
+(defvar shorty-demo-root-current nil) ;;a reference to the current demo root
+
 (defun shorty-demo-macro-string-to-list (macro-str)
   "Convert , MACRO-STR, to elisp-readable vector format."
   (cl-flet ((f (key-seq-str)
@@ -212,13 +235,16 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
         (execute-kbd-macro (vector key))
         ))))
 
-(defun shorty-demo-open-internal (props)
+(defun shorty-demo-open-internal (props &optional buffers-ready-p)
   "internal function"
   (let* ((messages-buffer (or (get-buffer shorty-messages-buffer-name)
                               (generate-new-buffer shorty-messages-buffer-name)))
          (demo-buffer     (or (get-buffer shorty-buffer-name)
                               (generate-new-buffer shorty-buffer-name))))
-    (shorty-buffers-display demo-buffer messages-buffer)
+    ;; these functions should only be executed on initial call to run a demo or album
+    (unless buffers-ready-p
+      (shorty-buffers-display demo-buffer messages-buffer)
+      (manage-minor-mode-bals))
     (shorty-buffers-init demo-buffer messages-buffer props)
     (condition-case err
         (shorty-demo-press-keys demo-buffer messages-buffer (plist-get props :macro))
@@ -227,16 +253,9 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
 
 (defun shorty-demo-open ()
   (interactive)
-  (let* ((elmt (org-element-at-point))
-         (elmt-root (org-element-parse-buffer)))
-    (cond ((shorty-is-demo? elmt)
-           (let ((props (shorty-demo-props elmt elmt-root)))
-             (shorty-demo-open-internal props)))
-
-          ((shorty-is-demo-group? elmt)
-           (message "demogroup found"))
-
-          (t (message "something went wrong")))))
+  (setq shorty-album-current (buffer-name (current-buffer)))
+  (shorty-demo-open-internal (shorty-demo-props (org-element-at-point)
+                                                (org-element-parse-buffer))))
 
 ;;** Buffers
 (defun shorty-buffers-init (demo-buffer messages-buffer props)
@@ -249,7 +268,6 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
       (add-hook 'pre-command-hook 'shorty-messages-log-command nil t)
       (when major-mode
         (funcall major-mode))
-      (manage-minor-mode-bals)
       (mapc (lambda (mode) (funcall mode 1)) minor-modes)
       (erase-buffer)
       (insert text)
@@ -306,16 +324,18 @@ Later, when the buffer is buried, it may be restored by
 (setq shorty-post-display-buffer-hook nil)
 (setq shorty-buffer-initialize-hook nil)
 (setq shorty-demo-end-hook nil)
-(setq shorty-quit-hook nil)
+(setq shorty-demo-quit-hook nil)
 
 (add-hook 'shorty-pre-display-buffer-hook 'shorty-save-window-configuration)
 (add-hook 'shorty-post-display-buffer-hook 'shorty-save-window-configuration)
 (add-hook 'shorty-demo-end-hook 'shorty-messages-remove-log-command-hook)
-(add-hook 'shorty-demo-end-hook 'manage-minor-mode-restore-from-bals)
-(add-hook 'shorty-quit-hook 'manage-minor-mode-restore-from-bals)
-(add-hook 'shorty-quit-hook 'shorty-restore-window-configuration)
+(add-hook 'shorty-demo-end-hook 'shorty-demo-mode-turn-on)
+
+(add-hook 'shorty-demo-quit-hook 'manage-minor-mode-restore-from-bals)
+(add-hook 'shorty-demo-quit-hook 'shorty-restore-window-configuration)
 
 ;;** Dev
+(setq shorty-album-current nil)
 (global-set-key (kbd "C-<f5>") (lambda ()
                                  (interactive)
                                  (manage-minor-mode-restore-from-bals)))
