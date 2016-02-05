@@ -27,50 +27,123 @@
 ;;** Dependencies
 (require 'manage-minor-mode)
 
-;;** Config Vars
-(defvar shorty-update-period 0.05
+;;** Vars
+(defvar shorty-update-period 0.25
   "Defines how fast shorty will play a macro demo.
 Value represents the number of seconds between individual key/chord presses.")
 (defvar shorty-buffer-name "*shorty*")
 (defvar shorty-messages-buffer-name "*shorty-messages*")
-(defvar shorty-album-current nil)
+(defvar shorty-state (list :props        nil
+                           :demo-elmt    nil
+                           :album-buffer nil))
 
 ;;** Mode Actions
 (defun shorty-demo-quit ()
   (interactive)
   (run-hooks 'shorty-demo-quit-hook))
 
-(defun shorty-demo-previous ()
-  (interactive)
-  (shorty-demo-mode 0)
-  (message "goign to last demo"))
+;; TODO Could make this into a macro maybe
+(defun shorty-demo-move (direction)
+  "This function plays the next demo in the given DIRECTION.i
 
-(defun shorty-demo-replay ()
+Valid values for DIRECTION are :previous and :next."
   (interactive)
-  (message "replaying demo")
-  (shorty-demo-mode 0)
-  (let (props)
-    (with-current-buffer shorty-album-current
-      (setq props (shorty-demo-props (org-element-at-point)
-                                     (org-element-parse-buffer))))
-    (shorty-demo-open-internal props t)))
+  ;; TODO pick better name so for directions, confusing with two meanings of next
+  (let ((props nil)
+        (next-demo-elmt nil))
+    (with-current-buffer (plist-get shorty-state :album-buffer)
+      (let* ((elmt (shorty-album-elmt-with-contents
+                    (plist-get shorty-state :demo-elmt)
+                    (org-element-parse-buffer)))
+
+             (elmt-parent-children (shorty-album-children (shorty-album-parent elmt)))
+
+             (elmt-index (shorty-album-elmt-index-in elmt elmt-parent-children))
+
+             (index-new (if (equal direction :previous)
+                            (1- elmt-index)
+                          (1+ elmt-index)))
+
+             (index-new-in-range? (<= 0 index-new (1- (length elmt-parent-children)))))
+        (if index-new-in-range?
+            (progn
+              (setq next-demo-elmt (elt elmt-parent-children index-new))
+              (setq props (shorty-demo-props next-demo-elmt
+                                             (org-element-parse-buffer))))
+          (message "Index out of bounds."))
+        )
+      )
+    (when props
+      (setq shorty-state (plist-put shorty-state :demo-elmt next-demo-elmt))
+      (setq shorty-state (plist-put shorty-state :props     props))
+      (shorty-demo-open-internal props t))))
+
+(defun shorty-demo-previous ()
+  "Play the previous demo in current album."
+  (interactive)
+  (shorty-demo-move :previous))
 
 (defun shorty-demo-next ()
+  "Play the next demo in current album."
   (interactive)
-  (shorty-demo-mode 0)
-  (message "going to next demo"))
+  (shorty-demo-move :next))
+
+(defun shorty-demo-replay ()
+  "Replay the current demo."
+  (interactive)
+  (shorty-demo-open-internal (plist-get shorty-state :props) t))
 
 (defun shorty-album-play ()
+  "Plays the first demo in a particular album"
   (interactive)
-  (message "playing album"))
+  (with-current-buffer (current-buffer)
+    (let ((album-or-demo (shorty-album-elmt-with-contents (org-element-at-point)
+                                                          (org-element-parse-buffer))))
+      (cond ((shorty-album-p album-or-demo)
+             (shorty-demo-open (car (shorty-album-children album-or-demo))))
 
-(defun shorty-album-demo-play ()
-  (interactive)
-  (message "playing album-demo"))
+            ((shorty-demo-p album-or-demo)
+             (shorty-demo-open album-or-demo))
+
+            (t
+             (message "Unable to play. The cursor must be on a valid album or demo."))))))
 
 (defun shorty-album-build ()
   (interactive)
   (message "building album"))
+
+;;** Albums
+;; TODO these abum functions can potentially be very slow
+(defun shorty-album-p (elmt)
+  "All children are demos"
+  (not (seq-empty-p (cl-remove-if-not 'shorty-demo-p (shorty-album-children elmt)))))
+
+
+(defun shorty-album-parent (elmt)
+  "Returns parent of ELMT."
+  (org-element-property :parent elmt))
+
+(defun shorty-album-children (elmt)
+  "Returns children of elmt in a list."
+  (cdr (org-element-map elmt 'headline #'identity nil nil t)))
+
+(defun shorty-album-elmt-with-contents (elmt elmt-root)
+  "Returns an org element with contents from an org tree.
+
+Function requires the content-less element, ELMT, and the element's
+root, ELMT-ROOT."
+  (let ((elmt-name (org-element-property :raw-value elmt)))
+    (org-element-map elmt-root 'headline (lambda (hl)
+                                           (let ((hl-name (org-element-property
+                                                           :raw-value hl)))
+                                             (when (equal elmt-name hl-name) hl))) nil t)))
+
+(defun shorty-album-elmt-index-in (elmt elmt-list)
+  (let ((elmt-index nil)
+        (elmt-name (org-element-property :raw-value elmt)))
+    (dotimes (i (length elmt-list) elmt-index)
+      (when (equal elmt-name (org-element-property :raw-value (elt elmt-list i)))
+        (setq elmt-index i)))))
 
 ;;** Key Maps
 (defvar shorty-demo-mode-map
@@ -96,7 +169,6 @@ Value represents the number of seconds between individual key/chord presses.")
   "TODO Used to navigate demos from inside inside a shorty demo buffer"
   :lighter "ShortyDemo"
   :keymap shorty-demo-mode-map)
-
 
 (define-minor-mode
   shorty-album-mode
@@ -130,25 +202,29 @@ Value represents the number of seconds between individual key/chord presses.")
 (defun shorty-messages-remove-log-command-hook ()
   ""
   (remove-hook 'pre-command-hook 'shorty-messages-log-command t))
+
 ;;** Demos
-(defvar shorty-demo-current nil) ;;a reference to the current demo
-(defvar shorty-demo-root-current nil) ;;a reference to the current demo root
+(defvar shorty-demo-current nil)
+(defvar shorty-demo-root-current nil)
+
+(defun shorty-demo-p (elmt)
+  "Returns true if ELMT is a demo."
+  (let ((has-macro-p (org-element-property :MACRO elmt))
+        (has-text-p  (org-element-property :TEXT elmt)))
+    (and (and has-macro-p has-text-p) t)))
+
+(defun shorty-demo-turn-off-minor-modes ()
+  "Turns off all the minor modes the last demo enabled."
+  (with-current-buffer (get-buffer shorty-buffer-name)
+    ;; TODO should I revert the major mode back?
+    (mapcar (lambda (mode) (funcall mode 0)) (plist-get (plist-get shorty-state :props)
+                                                        :minor-modes))))
 
 (defun shorty-demo-macro-string-to-list (macro-str)
   "Convert , MACRO-STR, to elisp-readable vector format."
   (cl-flet ((f (key-seq-str)
                (mapcar 'identity (edmacro-parse-keys key-seq-str t))))
     (shorty-flatten (mapcar #'f (split-string macro-str)))))
-
-(defun shorty-is-demo? (elmt)
-  "Returns true if ELMT is a demo."
-  (let ((has-macro-p (org-element-property :MACRO elmt))
-        (has-text-p (org-element-property :TEXT elmt)))
-    (and has-macro-p has-text-p)))
-
-(defun shorty-is-demo-group? (elmt)
-  "Returns true if ELMT is a demo group."
-  nil)
 
 (defun shorty-demo-props-text (elmt elmt-root)
   "Try getting :TEXT: property from ELMT or ELMT-ROOT.
@@ -170,7 +246,7 @@ properties."
                (message "ERROR: The :TEXT: property you provided, %s, is not a keyword or a string." text-val)))))))
 
 (defun shorty-demo-props-major-mode (elmt elmt-root)
-  "Try to get minor mode from :MAJORMODE: property.
+  "Try to get major mode from :MAJORMODE: property.
 
 The property is first looked for in ELMT.  Otherwise it is looked for
 in ELMT-ROOT.  If the property can't be found nil is returned."
@@ -184,7 +260,7 @@ in ELMT-ROOT.  If the property can't be found nil is returned."
 (defun shorty-demo-props-minor-modes (elmt elmt-root)
   "Get modes list from :MINORMODES: property in ELMT and ELMT-ROOT.
 
-The two lists will be appended and returned."
+The two lists will be appended to each otherand returned."
   (let ((root-modes (eval (read (or (org-element-property :MINORMODES (nth 2 elmt-root)) "nil"))))
         (demo-modes (eval (read (or (org-element-property :MINORMODES elmt) "nil")))))
     (if (and (or (equal nil root-modes) (consp root-modes))
@@ -220,7 +296,7 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
 (defun shorty-demo-press-keys (demo-buffer messages-buffer macro)
   "Slowly executes the macro referred to by the macro arg."
   (let (key
-        (update-period (if shorty-debug 0.5 shorty-update-period)))
+        (update-period (if shorty-debug 0.05 shorty-update-period)))
     (dolist (key (shorty-demo-macro-string-to-list macro))
       (with-current-buffer demo-buffer
         (sit-for update-period)
@@ -251,11 +327,14 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
       (error (message err)))
     (run-hooks 'shorty-demo-end-hook)))
 
-(defun shorty-demo-open ()
+(defun shorty-demo-open (demo-elmt)
   (interactive)
-  (setq shorty-album-current (buffer-name (current-buffer)))
-  (shorty-demo-open-internal (shorty-demo-props (org-element-at-point)
-                                                (org-element-parse-buffer))))
+  (let ((props (shorty-demo-props demo-elmt
+                                  (org-element-parse-buffer))))
+    (setq shorty-state (plist-put shorty-state :album-buffer (buffer-name (current-buffer))))
+    (setq shorty-state (plist-put shorty-state :demo-elmt    demo-elmt))
+    (setq shorty-state (plist-put shorty-state :props        props))
+    (shorty-demo-open-internal props)))
 
 ;;** Buffers
 (defun shorty-buffers-init (demo-buffer messages-buffer props)
@@ -265,6 +344,7 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
         (major-mode (plist-get props :major-mode))
         (minor-modes (plist-get props :minor-modes)))
     (with-current-buffer demo-buffer
+      (shorty-demo-mode 0)
       (add-hook 'pre-command-hook 'shorty-messages-log-command nil t)
       (when major-mode
         (funcall major-mode))
@@ -317,25 +397,12 @@ Later, when the buffer is buried, it may be restored by
         (with-current-buffer buffer
           (setq shorty-previous-window-configuration nil))))))
 
-(global-set-key (kbd "C-<f6>") 'shorty-restore-window-configuration)
-
-;;** Hooks
-(setq shorty-pre-display-buffer-hook nil)
-(setq shorty-post-display-buffer-hook nil)
-(setq shorty-buffer-initialize-hook nil)
-(setq shorty-demo-end-hook nil)
-(setq shorty-demo-quit-hook nil)
-
-(add-hook 'shorty-pre-display-buffer-hook 'shorty-save-window-configuration)
-(add-hook 'shorty-post-display-buffer-hook 'shorty-save-window-configuration)
-(add-hook 'shorty-demo-end-hook 'shorty-messages-remove-log-command-hook)
-(add-hook 'shorty-demo-end-hook 'shorty-demo-mode-turn-on)
-
-(add-hook 'shorty-demo-quit-hook 'manage-minor-mode-restore-from-bals)
-(add-hook 'shorty-demo-quit-hook 'shorty-restore-window-configuration)
-
 ;;** Dev
-(setq shorty-album-current nil)
+(global-set-key (kbd "C-<f6>") 'shorty-restore-window-configuration)
+(setq shorty-state (list :album-buffer nil
+                         :demo-elmt    nil
+                         :props        nil))
+
 (global-set-key (kbd "C-<f5>") (lambda ()
                                  (interactive)
                                  (manage-minor-mode-restore-from-bals)))
@@ -355,7 +422,6 @@ Later, when the buffer is buried, it may be restored by
                     (re-search-forward "demo1" nil t nil)
                     (setq my-elmt (org-element-at-point)))))
 
-
 (global-set-key (kbd "C-c c s")
                 (lambda ()
                   (interactive)
@@ -364,6 +430,23 @@ Later, when the buffer is buried, it may be restored by
                   (with-current-buffer (current-buffer)
                     (shorty-demo-open))))
 
+
 (setq shorty-debug t)
+
+;;** Hooks
+(setq shorty-pre-display-buffer-hook nil)
+(setq shorty-post-display-buffer-hook nil)
+(setq shorty-buffer-initialize-hook nil)
+(setq shorty-demo-end-hook nil)
+(setq shorty-demo-quit-hook nil)
+
+(add-hook 'shorty-pre-display-buffer-hook 'shorty-save-window-configuration)
+(add-hook 'shorty-post-display-buffer-hook 'shorty-save-window-configuration)
+(add-hook 'shorty-demo-end-hook 'shorty-messages-remove-log-command-hook)
+(add-hook 'shorty-demo-end-hook 'shorty-demo-turn-off-minor-modes)
+(add-hook 'shorty-demo-end-hook 'shorty-demo-mode-turn-on)
+
+(add-hook 'shorty-demo-quit-hook 'manage-minor-mode-restore-from-bals)
+(add-hook 'shorty-demo-quit-hook 'shorty-restore-window-configuration)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; shorty.el ends here
