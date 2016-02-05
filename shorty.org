@@ -1,3 +1,4 @@
+
 * Shortcut Demo
   :PROPERTIES:
   :LOREM_IPSUM_1: "Lorem Ipsum 1"
@@ -21,4 +22,9 @@
     :PROPERTIES:
     :TEXT: :LOREM_IPSUM_1
     :MACRO: "a b c d"
+    :END:
+*** em4
+    :PROPERTIES:
+    :TEXT: "a\n\n\nb\n\n\n\nc\n\n\n\n\n\n\n"
+    :MACRO: "C-, l a l a f d"
     :END:
