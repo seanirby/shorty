@@ -5,7 +5,7 @@
   :MAJORMODES: 'emacs-lisp-mode
   :MINORMODES: '(paredit-mode)
   :END:
-** Shortcut Demo Subgroup
+** Shortut Demo Subgroup1
 *** demo1
     :PROPERTIES:
     :TEXT:     "abcdefg"
@@ -22,3 +22,24 @@
     :TEXT: :LOREM_IPSUM_1
     :MACRO: "a b c d"
     :END:
+** Shortcut Demo Subgroup2
+*** demo4
+    :PROPERTIES:
+    :TEXT:     "Demo 4"
+    :MACRO:    "helloworld 2*C-b 2*C-f"
+    :END:
+*** demo5
+    :PROPERTIES:
+    :TEXT:     "\n\n\n(Demo 5)"
+    :MACRO:    "3*C-n ccccc"
+    :MINORMODES: '(lispy-mode)
+    :END:
+*** demo6
+    :PROPERTIES:
+    :TEXT: "Demo 6"
+    :MACRO: "a b c d"
+    :END:
+    
+
+    
+    

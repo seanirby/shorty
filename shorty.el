@@ -37,114 +37,6 @@ Value represents the number of seconds between individual key/chord presses.")
                            :demo-elmt    nil
                            :album-buffer nil))
 
-;;** Mode Actions
-(defun shorty-demo-quit ()
-  (interactive)
-  (run-hooks 'shorty-demo-quit-hook))
-
-;; TODO Could make this into a macro maybe
-(defun shorty-demo-move (direction)
-  "This function plays the next demo in the given DIRECTION.i
-
-Valid values for DIRECTION are :previous and :next."
-  (interactive)
-  ;; TODO pick better name so for directions, confusing with two meanings of next
-  (let ((props nil)
-        (next-demo-elmt nil))
-    (with-current-buffer (plist-get shorty-state :album-buffer)
-      (let* ((elmt (shorty-album-elmt-with-contents
-                    (plist-get shorty-state :demo-elmt)
-                    (org-element-parse-buffer)))
-
-             (elmt-parent-children (shorty-album-children (shorty-album-parent elmt)))
-
-             (elmt-index (shorty-album-elmt-index-in elmt elmt-parent-children))
-
-             (index-new (if (equal direction :previous)
-                            (1- elmt-index)
-                          (1+ elmt-index)))
-
-             (index-new-in-range? (<= 0 index-new (1- (length elmt-parent-children)))))
-        (if index-new-in-range?
-            (progn
-              (setq next-demo-elmt (elt elmt-parent-children index-new))
-              (setq props (shorty-demo-props next-demo-elmt
-                                             (org-element-parse-buffer))))
-          (message "Index out of bounds."))
-        )
-      )
-    (when props
-      (setq shorty-state (plist-put shorty-state :demo-elmt next-demo-elmt))
-      (setq shorty-state (plist-put shorty-state :props     props))
-      (shorty-demo-open-internal props t))))
-
-(defun shorty-demo-previous ()
-  "Play the previous demo in current album."
-  (interactive)
-  (shorty-demo-move :previous))
-
-(defun shorty-demo-next ()
-  "Play the next demo in current album."
-  (interactive)
-  (shorty-demo-move :next))
-
-(defun shorty-demo-replay ()
-  "Replay the current demo."
-  (interactive)
-  (shorty-demo-open-internal (plist-get shorty-state :props) t))
-
-(defun shorty-album-play ()
-  "Plays the first demo in a particular album"
-  (interactive)
-  (with-current-buffer (current-buffer)
-    (let ((album-or-demo (shorty-album-elmt-with-contents (org-element-at-point)
-                                                          (org-element-parse-buffer))))
-      (cond ((shorty-album-p album-or-demo)
-             (shorty-demo-open (car (shorty-album-children album-or-demo))))
-
-            ((shorty-demo-p album-or-demo)
-             (shorty-demo-open album-or-demo))
-
-            (t
-             (message "Unable to play. The cursor must be on a valid album or demo."))))))
-
-(defun shorty-album-build ()
-  (interactive)
-  (message "building album"))
-
-;;** Albums
-;; TODO these abum functions can potentially be very slow
-(defun shorty-album-p (elmt)
-  "All children are demos"
-  (not (seq-empty-p (cl-remove-if-not 'shorty-demo-p (shorty-album-children elmt)))))
-
-
-(defun shorty-album-parent (elmt)
-  "Returns parent of ELMT."
-  (org-element-property :parent elmt))
-
-(defun shorty-album-children (elmt)
-  "Returns children of elmt in a list."
-  (cdr (org-element-map elmt 'headline #'identity nil nil t)))
-
-(defun shorty-album-elmt-with-contents (elmt elmt-root)
-  "Returns an org element with contents from an org tree.
-
-Function requires the content-less element, ELMT, and the element's
-root, ELMT-ROOT."
-  (let ((elmt-name (org-element-property :raw-value elmt)))
-    (org-element-map elmt-root 'headline (lambda (hl)
-                                           (let ((hl-name (org-element-property
-                                                           :raw-value hl)))
-                                             (when (equal elmt-name hl-name) hl))) nil t)))
-
-(defun shorty-album-elmt-index-in (elmt elmt-list)
-  (let ((elmt-index nil)
-        (elmt-name (org-element-property :raw-value elmt)))
-    (dotimes (i (length elmt-list) elmt-index)
-      (when (equal elmt-name (org-element-property :raw-value (elt elmt-list i)))
-        (setq elmt-index i)))))
-
 ;;** Key Maps
 (defvar shorty-demo-mode-map
   (let ((map (make-keymap)))
@@ -163,7 +55,96 @@ root, ELMT-ROOT."
     (define-key map (kbd "C-, b") 'shorty-album-build)
     map))
 
+;;** Mode Actions
+(defun shorty-demo-quit ()
+  (interactive)
+  (run-hooks 'shorty-demo-quit-hook))
+
+;; TODO Could make this into a macro maybe
+(defun shorty-demo-move (dir)
+  "This function plays the next demo in the given DIR.
+
+Valid values for DIR are :previous and :next."
+  (interactive)
+  ;; TODO pick better name so for dirs, confusing with two meanings of next
+  (let* ((props nil)
+         (next-demo-elmt nil)
+         (album-buffer (plist-get shorty-state :album-buffer))
+         (elmt (plist-get shorty-state :demo-elmt))
+         (elmt-sibling (shorty-album-sibling elmt dir)))
+    ;; Check if this demo has a sibling at this level, if so play it.
+    (if elmt-sibling
+        (let ((props (shorty-demo-props elmt-sibling
+                                        (shorty-album-root album-buffer))))
+          (setq shorty-state (plist-put shorty-state :demo-elmt elmt-sibling))
+          (setq shorty-state (plist-put shorty-state :props     props))
+          (shorty-demo-open-internal props t)
+          )
+      (let* ((elmt-parent (shorty-album-parent elmt))
+             (elmt-parent-sibling (shorty-album-sibling elmt-parent dir)))
+        ;; If theres no sibling at the demo level, try to get the parents sibling
+        ;; (another album) in the given direction.  If one is found, play the first
+        ;; demo in it.
+        (if elmt-parent-sibling
+            (let* ((elmt-parent-sibling-child-first (elt (shorty-album-children elmt-parent-sibling) 0))
+                   (props (shorty-demo-props elmt-parent-sibling-child-first
+                                             (shorty-album-root album-buffer))))
+              (setq shorty-state (plist-put shorty-state :demo-elmt elmt-parent-sibling-child-first))
+              (setq shorty-state (plist-put shorty-state :props     props))
+              (shorty-demo-open-internal props t))
+          ;; Otherwise, there's nothing left to do
+          ;; TODO: Add in some kind of restart
+          (message "No more demos left.")
+          )))))
+
+
+(defun shorty-demo-previous ()
+  "Play the previous demo in current album."
+  (interactive)
+  (shorty-demo-move :previous))
+
+(defun shorty-demo-next ()
+  "Play the next demo in current album."
+  (interactive)
+  (shorty-demo-move :next))
+
+(defun shorty-demo-replay ()
+  "Replay the current demo."
+  (interactive)
+  (shorty-demo-open-internal (plist-get shorty-state :props) t))
+
+(defun shorty-album-play (&optional album-or-demo album-buffer)
+  "Plays the first demo in a particular album"
+  (interactive)
+  (when (and (not album-buffer)
+             (not (plist-get shorty-state :album-buffer)))
+    ;; TODO should get album buffer by defining a hook
+    ;; that sets hte shorty state whenever user enters
+    ;; a shorty buffer
+    (setq shorty-state (plist-put shorty-state :album-buffer "shorty.org")))
+  (let* ((album-root (shorty-album-root (plist-get shorty-state :album-buffer)))
+         (album-or-demo (or album-or-demo
+                            (with-current-buffer (or album-buffer
+                                                     (plist-get shorty-state :album-buffer))
+                              (shorty-album-elmt-with-contents (org-element-at-point)
+                                                               album-root)))))
+    (cond ((shorty-album-p album-or-demo)
+           (message "OPENING %s" (org-element-property :raw-value
+                                                       (car (shorty-album-children album-or-demo))))
+           (shorty-demo-open (car (shorty-album-children album-or-demo)) album-root))
+
+          ((shorty-demo-p album-or-demo)
+           (shorty-demo-open album-or-demo album-root))
+
+          (t
+           (message "Unable to play. The cursor must be on a valid album or demo.")))))
+
+(defun shorty-album-build ()
+  (interactive)
+  (message "building album"))
+
 ;;** Modes
+
 (define-minor-mode
   shorty-demo-mode
   "TODO Used to navigate demos from inside inside a shorty demo buffer"
@@ -182,6 +163,57 @@ root, ELMT-ROOT."
 (defun shorty-demo-mode-turn-off ()
   (shorty-demo-mode 0))
 
+;;** Albums TODO these abum functions can potentially be very slow
+
+(defun shorty-album-p (elmt)
+  "All children are demos"
+  (not (seq-empty-p (cl-remove-if-not 'shorty-demo-p (shorty-album-children elmt)))))
+
+
+(defun shorty-album-parent (elmt)
+  "Returns parent of ELMT."
+  (org-element-property :parent elmt))
+
+(defun shorty-album-children (elmt)
+  "Returns children of elmt in a list."
+  (cddr elmt))
+
+(defun shorty-album-elmt-with-contents (elmt elmt-root)
+  "Returns an org element with contents from an org tree.
+
+Function requires the content-less element, ELMT, and the element's
+root, ELMT-ROOT."
+  (let ((elmt-name (org-element-property :raw-value elmt)))
+    (org-element-map elmt-root 'headline (lambda (hl)
+                                           (let ((hl-name (org-element-property
+                                                           :raw-value hl)))
+                                             (when (equal elmt-name hl-name) hl))) nil t)))
+
+(defun shorty-album-sibling (elmt dir)
+  "Sibling in dir at current level, nil if it doesn't exist"
+  (let* ((elmt-index 0)
+         (elmt-parent (shorty-album-parent elmt))
+         (elmt-list (shorty-album-children elmt-parent))
+         (elmt-list-length (length elmt-list))
+         (elmt-name (org-element-property :raw-value elmt)))
+    (while (not (equal elmt-name
+                       (org-element-property :raw-value (elt elmt-list elmt-index))))
+      (setq elmt-index (1+ elmt-index)))
+    (let ((elmt-index-new (if (equal :next dir)
+                              (1+ elmt-index)
+                            (1- elmt-index))))
+      (when (<= 0 elmt-index-new (1- elmt-list-length))
+        (elt elmt-list elmt-index-new)))))
+
+(defun shorty-album-root (album-buffer)
+  (with-current-buffer album-buffer
+    (let ((root (plist-get shorty-state :album-root)))
+      (if root
+          root
+        (setq shorty-state (plist-put shorty-state :album-root (org-element-parse-buffer)))
+        (plist-get shorty-state :album-root)))))
+
+
 ;;** Helpers
 (defun shorty-flatten (lst)
   "Flattens a list LST"
@@ -196,8 +228,9 @@ root, ELMT-ROOT."
     (when messages-buffer
       (with-current-buffer messages-buffer
         (goto-char (point-max))
-        (newline)
-        (insert (if cmd cmd (prin1-to-string this-command)))))))
+        (newline
+         (insert (if cmd cmd (prin1-to-string this-command))))))))
+
 
 (defun shorty-messages-remove-log-command-hook ()
   ""
@@ -301,7 +334,7 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
       (with-current-buffer demo-buffer
         (sit-for update-period)
         (shorty-messages-log-command
-         (format "the command: %s" (key-binding (vector key))))
+         (format "%s" (key-binding (vector key))))
         ;; (if (and (commandp (key-binding (vector key))))
         ;;     (progn (message "her")
         ;;            (shorty-messages-log-command
@@ -327,14 +360,37 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
       (error (message err)))
     (run-hooks 'shorty-demo-end-hook)))
 
-(defun shorty-demo-open (demo-elmt)
+(defun shorty-demo-open (elmt elmt-root)
   (interactive)
-  (let ((props (shorty-demo-props demo-elmt
-                                  (org-element-parse-buffer))))
-    (setq shorty-state (plist-put shorty-state :album-buffer (buffer-name (current-buffer))))
-    (setq shorty-state (plist-put shorty-state :demo-elmt    demo-elmt))
-    (setq shorty-state (plist-put shorty-state :props        props))
+  (let ((props (shorty-demo-props elmt elmt-root)))
+    (setq shorty-state (plist-put shorty-state :demo-elmt elmt))
+    (setq shorty-state (plist-put shorty-state :props props))
     (shorty-demo-open-internal props)))
+
+;;** Micro Menu
+(defun shorty-micro-menu-show ()
+  ""
+  (save-excursion
+    (goto-char (point-min))
+    (insert (shorty-micro-menu-text))))
+
+(defun shorty-micro-menu-remove ()
+  ""
+  (message "removing micro menu text"))
+
+(defun shorty-micro-menu-text ()
+  ""
+  (shorty-micro-menu-propertize
+   (concat
+    "Press one of the following keys to select an action:\n\n"
+    "[n]ext demo\n"
+    "[r]eplay demo\n"
+    "[p]revious demo\n\n"
+    "[t]ry it out\n"
+    "[q]uit\n\n")))
+
+(defun shorty-micro-menu-propertize (str)
+  (propertize str 'face '(:foreground "green")))
 
 ;;** Buffers
 (defun shorty-buffers-init (demo-buffer messages-buffer props)
@@ -410,17 +466,14 @@ Later, when the buffer is buried, it may be restored by
 (global-set-key (kbd "C-c s b")
                 (lambda ()
                   (interactive)
-                  (with-current-buffer "shorty.org<shorty>"
+                  (with-current-buffer "shorty.org"
                     (setq my-tree (org-element-parse-buffer)))))
 
 
 (global-set-key (kbd "C-c s e")
                 (lambda ()
                   (interactive)
-                  (with-current-buffer "shorty.org<shorty>"
-                    (point-min)
-                    (re-search-forward "demo1" nil t nil)
-                    (setq my-elmt (org-element-at-point)))))
+                  (setq my-elmt (org-element-at-point))))
 
 (global-set-key (kbd "C-c c s")
                 (lambda ()
@@ -442,11 +495,13 @@ Later, when the buffer is buried, it may be restored by
 
 (add-hook 'shorty-pre-display-buffer-hook 'shorty-save-window-configuration)
 (add-hook 'shorty-post-display-buffer-hook 'shorty-save-window-configuration)
+
 (add-hook 'shorty-demo-end-hook 'shorty-messages-remove-log-command-hook)
 (add-hook 'shorty-demo-end-hook 'shorty-demo-turn-off-minor-modes)
 (add-hook 'shorty-demo-end-hook 'shorty-demo-mode-turn-on)
+(add-hook 'shorty-demo-end-hook 'shorty-micro-menu-show)
 
 (add-hook 'shorty-demo-quit-hook 'manage-minor-mode-restore-from-bals)
 (add-hook 'shorty-demo-quit-hook 'shorty-restore-window-configuration)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; shorty.el ends here
+;;; shorty.el ends herek
