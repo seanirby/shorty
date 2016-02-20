@@ -52,7 +52,9 @@ Value represents the number of seconds between individual key/chord presses.")
     ;;(suppress-keymap map t)
     (define-key map (kbd "C-, p") 'shorty-album-play)
     (define-key map (kbd "C-, o") 'shorty-album-demo-play)
-    (define-key map (kbd "C-, b") 'shorty-album-build)
+    (define-key map (kbd "C-, v") 'shorty-album-build)
+    (define-key map (kbd "C-, b") 'shorty-album-build-insert-buffer-string)
+    (define-key map (kbd "C-, k") 'shorty-album-build-insert-last-macro-string)
     map))
 
 ;;** Mode Actions
@@ -143,6 +145,17 @@ Valid values for DIR are :previous and :next."
   (interactive)
   (message "building album"))
 
+
+(defun shorty-album-build-insert-buffer-string (buffer)
+  (interactive "BChoose a buffer whose string you want to insert:")
+  (insert (with-current-buffer buffer
+            (let ((print-escape-newlines t))
+              (prin1-to-string (buffer-substring-no-properties (point-min) (point-max)))))))
+
+(defun shorty-album-build-insert-last-macro-string ()
+  (interactive)
+  (insert (prin1-to-string (edmacro-format-keys last-kbd-macro))))
+
 ;;** Modes
 
 (define-minor-mode
@@ -155,7 +168,7 @@ Valid values for DIR are :previous and :next."
   shorty-album-mode
   "TODO Used to build and play demos from within a shorty album"
   :lighter "ShortyAlbum"
-  :keymap shorty-album-mode-map)
+  :keymap shorty-album-mode-map)/
 
 (defun shorty-demo-mode-turn-on ()
   (shorty-demo-mode 1))
