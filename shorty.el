@@ -37,7 +37,8 @@ Value represents the number of seconds between individual key/chord presses.")
                            :demo-elmt    nil
                            :album-buffer nil))
 
-;;** Key Maps
+;;** Modes
+
 (defvar shorty-demo-mode-map
   (let ((map (make-keymap)))
     (suppress-keymap map t)
@@ -47,17 +48,28 @@ Value represents the number of seconds between individual key/chord presses.")
     (define-key map "n" 'shorty-demo-next)
     map))
 
-(defvar shorty-album-mode-map
-  (let ((map (make-keymap)))
-    ;;(suppress-keymap map t)
-    (define-key map (kbd "C-, p") 'shorty-album-play)
-    (define-key map (kbd "C-, o") 'shorty-album-demo-play)
-    (define-key map (kbd "C-, v") 'shorty-album-build)
-    (define-key map (kbd "C-, b") 'shorty-album-build-insert-buffer-string)
-    (define-key map (kbd "C-, k") 'shorty-album-build-insert-last-macro-string)
-    map))
+(define-minor-mode
+  shorty-demo-mode
+  "TODO Used to navigate demos from inside inside a shorty demo buffer"
+  :lighter "ShortyDemo"
+  :keymap shorty-demo-mode-map)
 
-;;** Mode Actions
+(defun shorty-demo-mode-turn-on ()
+  (shorty-demo-mode 1))
+
+(defun shorty-demo-mode-turn-off ()
+  (shorty-demo-mode 0))
+
+(define-derived-mode shorty-album-mode org-mode "TODO Fill in for shorty-album-mode"
+  (let ((map shorty-album-mode-map))
+    (define-key map (kbd "C-c s p") 'shorty-album-play)
+    (define-key map (kbd "C-c s o") 'shorty-album-demo-play)
+    (define-key map (kbd "C-c s v") 'shorty-album-build)
+    (define-key map (kbd "C-c s b") 'shorty-album-build-insert-buffer-string)
+    (define-key map (kbd "C-c s k") 'shorty-album-build-insert-last-macro-string)
+    ))
+
+;;** Mode Key Actions
 (defun shorty-demo-quit ()
   (interactive)
   (run-hooks 'shorty-demo-quit-hook))
@@ -155,26 +167,6 @@ Valid values for DIR are :previous and :next."
 (defun shorty-album-build-insert-last-macro-string ()
   (interactive)
   (insert (prin1-to-string (edmacro-format-keys last-kbd-macro))))
-
-;;** Modes
-
-(define-minor-mode
-  shorty-demo-mode
-  "TODO Used to navigate demos from inside inside a shorty demo buffer"
-  :lighter "ShortyDemo"
-  :keymap shorty-demo-mode-map)
-
-(define-minor-mode
-  shorty-album-mode
-  "TODO Used to build and play demos from within a shorty album"
-  :lighter "ShortyAlbum"
-  :keymap shorty-album-mode-map)/
-
-(defun shorty-demo-mode-turn-on ()
-  (shorty-demo-mode 1))
-
-(defun shorty-demo-mode-turn-off ()
-  (shorty-demo-mode 0))
 
 ;;** Albums TODO these abum functions can potentially be very slow
 
