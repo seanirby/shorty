@@ -69,6 +69,10 @@ Value represents the number of seconds between individual key/chord presses.")
     (define-key map (kbd "C-c s k") 'shorty-album-build-insert-last-macro-string)
     ))
 
+;; TODO Maybe this should be in user configuration ??
+;; Whatever it takes to get autoloads working correctly. 
+(add-to-list 'auto-mode-alist '("\\.shorty\\'" . shorty-album-mode))
+
 ;;** Mode Key Actions
 (defun shorty-demo-quit ()
   (interactive)
