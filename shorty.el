@@ -60,7 +60,7 @@ Value represents the number of seconds between individual key/chord presses.")
 (defun shorty-demo-mode-turn-off ()
   (shorty-demo-mode 0))
 
-(define-derived-mode shorty-album-mode org-mode "TODO Fill in for shorty-album-mode"
+(define-derived-mode shorty-album-mode org-mode "Shorty-Album"
   (let ((map shorty-album-mode-map))
     (define-key map (kbd "C-c s p") 'shorty-album-play)
     (define-key map (kbd "C-c s o") 'shorty-album-demo-play)
@@ -245,6 +245,30 @@ root, ELMT-ROOT."
   ""
   (remove-hook 'pre-command-hook 'shorty-messages-log-command t))
 
+;;** Micro Menu
+(defun shorty-micro-menu-show ()
+  ""
+  (save-excursion
+    (goto-char (point-min))
+    (insert (shorty-micro-menu-text))))
+
+(defun shorty-micro-menu-remove ()
+  ""
+  (message "removing micro menu text"))
+
+(defun shorty-micro-menu-text ()
+  ""
+  (shorty-micro-menu-propertize
+   (concat
+    "Press one of the following keys to select an action:\n\n"
+    "[n]ext demo\n"
+    "[r]eplay demo\n"
+    "[p]revious demo\n\n"
+    "[t]ry it out\n"
+    "[q]uit\n\n")))
+
+(defun shorty-micro-menu-propertize (str)
+  (propertize str 'face '(:foreground "green")))
 ;;** Demos
 (defvar shorty-demo-current nil)
 (defvar shorty-demo-root-current nil)
@@ -376,31 +400,6 @@ Accepts a demo element, ELMT, and the root demo group ELMT-ROOT."
     (setq shorty-state (plist-put shorty-state :props props))
     (shorty-demo-open-internal props)))
 
-;;** Micro Menu
-(defun shorty-micro-menu-show ()
-  ""
-  (save-excursion
-    (goto-char (point-min))
-    (insert (shorty-micro-menu-text))))
-
-(defun shorty-micro-menu-remove ()
-  ""
-  (message "removing micro menu text"))
-
-(defun shorty-micro-menu-text ()
-  ""
-  (shorty-micro-menu-propertize
-   (concat
-    "Press one of the following keys to select an action:\n\n"
-    "[n]ext demo\n"
-    "[r]eplay demo\n"
-    "[p]revious demo\n\n"
-    "[t]ry it out\n"
-    "[q]uit\n\n")))
-
-(defun shorty-micro-menu-propertize (str)
-  (propertize str 'face '(:foreground "green")))
-
 ;;** Buffers
 (defun shorty-buffers-init (demo-buffer messages-buffer props)
   "Places buffer in a state such that a demo can be run."
@@ -512,5 +511,23 @@ Later, when the buffer is buried, it may be restored by
 
 (add-hook 'shorty-demo-quit-hook 'manage-minor-mode-restore-from-bals)
 (add-hook 'shorty-demo-quit-hook 'shorty-restore-window-configuration)
+;;** Building
+;; (defun shorty-choose-directory (dir)
+;;   (interactive "DChoose a directory:")
+;;   dir)
+;; (defun shorty-choose-filename (name)
+;;   (interactive ))
+
+(defun shorty-create-album (album-name)
+  (interactive "sChoose a filename:")
+  (let ((filename (format "%s.shorty" album-name))))
+  (if (y-or-n-p (format "Create %s in current directory?" filename))
+      (progn
+        (find-file filename)
+        (with-current-buffer filename
+          (insert (format "* %s album" filename))))
+    (message "Shorty album not created.")))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; shorty.el ends herek
+;;; shorty.el ends here
