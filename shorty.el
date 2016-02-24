@@ -139,7 +139,7 @@ Valid values for DIR are :previous and :next."
     ;; TODO should get album buffer by defining a hook
     ;; that sets hte shorty state whenever user enters
     ;; a shorty buffer
-    (setq shorty-state (plist-put shorty-state :album-buffer "shorty.org")))
+    (setq shorty-state (plist-put shorty-state :album-buffer "shorty.shorty")))
   (let* ((album-root (shorty-album-root (plist-get shorty-state :album-buffer)))
          (album-or-demo (or album-or-demo
                             (with-current-buffer (or album-buffer
@@ -474,7 +474,7 @@ Later, when the buffer is buried, it may be restored by
 (global-set-key (kbd "C-c s b")
                 (lambda ()
                   (interactive)
-                  (with-current-buffer "shorty.org"
+                  (with-current-buffer "shorty.shorty"
                     (setq my-tree (org-element-parse-buffer)))))
 
 
