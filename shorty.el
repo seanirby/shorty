@@ -319,11 +319,36 @@ Valid values for DIR are :previous and :next."
 (add-hook 'shorty-demo-end-hook 'shorty-demo-turn-off-minor-modes)
 (add-hook 'shorty-demo-end-hook 'manage-minor-mode-restore-from-bals)
 (add-hook 'shorty-demo-end-hook 'shorty-demo-mode-turn-on)
-(add-hook 'shorty-demo-end-hook 'shorty-micro-menu-show)
+(add-hook 'shorty-demo-end-hook 'shorty-demo-menu/body)
 
 (add-hook 'shorty-demo-quit-hook 'shorty-window-restore-configuration)
 ;;** Album                 Functions related to albums
 ;;*** Data 
+(defun shorty-album-build (directory)
+  ;; Gets all albums from DIRECTORY
+  (let* ((album (eval (read (with-temp-buffer
+                              ;;TODO should probably do a check here for the file
+                              ;; and massage directory in cas eit has a "/" already
+                              (insert-file-contents (format "%s/album.el" directory))
+                              (buffer-string)))))
+         (text-refs (plist-get album :text-refs))
+         text-refs-new
+         (text-refs-keys  (shorty-plist-keys text-refs)))
+    ;;TODO replace nil with a check to make sure all files exist
+    (if (or nil (equal nil text-refs-keys))
+        (progn
+          (message "Aborted build.  Album's :text-refs property is undefined or malformed.")
+          nil)
+      (progn
+        (plist-put album :text-refs
+                   (dolist (ref text-refs-keys text-refs-new)
+                     (let* ((sub-filepath (plist-get text-refs ref))
+                            (full-filepath (format "%s/%s" directory sub-filepath)))
+                       (setq text-refs-new (plist-put text-refs-new
+                                                      ref
+                                                      (shorty-get-file-contents full-filepath))))))))))
+
+
 (defun shorty-album-list ()
   (mapcar 'symbol-value shorty-album-list))
 
@@ -404,18 +429,6 @@ playlists and demos are presented as in a read-only outline using
         (shorty-demo-open demo-props)
         ))))
 ;;*** Buffer
-;;  ONE COMPLETION FRAMEWORK AGNOSTIC OPTION
-;; (let* ((options "[c]hoose from available albums\n\n[o]pen interactive buffer\n\n[q]uit\n\n")
-;;        (prompt (format "%sPress a key to select one of the options above:" options))
-;;        (opt (read-char prompt)))
-;;   (cond ((equal ?c opt)
-;;          (message "Choosing album"))
-
-;;         ((equal ?o opt)
-;;          (shorty-albums-buffer-open))
-
-;;         (t nil)))
-
 (defun shorty-album-buffer-search (dir type &optional prop)
   "Searches in the given direction DIR for node with type TYPE.
 
@@ -525,50 +538,9 @@ Level | Type
 ;;** Dev
 (setq shorty-debug t)
 
-(setq shorty-sample-album (shorty-build-album "./album"))
+(setq shorty-sample-album (shorty-album-build "./album"))
 (setq shorty-album-list nil)
 (add-to-list 'shorty-album-list 'shorty-sample-album)
-
-(defun shorty-plist-keys (plist)
-  "Extract property keys from PLIST"
-  (let ((len (length plist))
-        (flagged nil)
-        even-elms
-        )
-    (when (evenp len)
-      (dotimes (i len even-elms)
-        (when (evenp i)
-          (setq even-elms (cons (nth i plist) even-elms)))))))
-
-(defun shorty-get-file-contents (filepath)
-  ""
-  (with-temp-buffer
-    (insert-file-contents filepath)
-    (buffer-string)))
-
-(defun shorty-build-album (directory)
-  ;; Gets all albums from DIRECTORY
-  (let* ((album (eval (read (with-temp-buffer
-                              ;;TODO should probably do a check here for the file
-                              ;; and massage directory in cas eit has a "/" already
-                              (insert-file-contents (format "%s/album.el" directory))
-                              (buffer-string)))))
-         (text-refs (plist-get album :text-refs))
-         text-refs-new
-         (text-refs-keys  (shorty-plist-keys text-refs)))
-    ;;TODO replace nil with a check to make sure all files exist
-    (if (or nil (equal nil text-refs-keys))
-        (progn
-          (message "Aborted build.  Album's :text-refs property is undefined or malformed.")
-          nil)
-      (progn
-        (plist-put album :text-refs
-                   (dolist (ref text-refs-keys text-refs-new)
-                     (let* ((sub-filepath (plist-get text-refs ref))
-                            (full-filepath (format "%s/%s" directory sub-filepath)))
-                       (setq text-refs-new (plist-put text-refs-new
-                                                      ref
-                                                      (shorty-get-file-contents full-filepath))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; shorty.el ends here
