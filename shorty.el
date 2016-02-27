@@ -257,8 +257,8 @@ Valid values for DIR are :previous and :next."
                               (generate-new-buffer shorty-buffer-name))))
     ;; these functions should only be executed on initial call to run a demo or album
     (unless buffers-ready-p
-      (shorty-demo-buffers-display demo-buffer messages-buffer)
-      (manage-minor-mode-bals))
+      (shorty-demo-buffers-display demo-buffer messages-buffer))
+    (manage-minor-mode-bals)
     (shorty-demo-buffers-init demo-buffer messages-buffer props)
     (condition-case err
         (shorty-demo-press-keys demo-buffer messages-buffer (plist-get props :macro))
