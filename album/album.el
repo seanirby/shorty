@@ -17,23 +17,23 @@
 ;;
 ;; At the playlist and demo level, the `:text' property can be either a text-ref keyword or a literal string.
 
-(list :name          "Skeleton Album"                                         ;; *The name of the album
+(list :name          "Example Album"                                          ;; *The name of the album
       :minor-modes   '(paredit-mode)                                          ;; A list of the default minor modes descendant demos will use
       :text-refs     (list :emacs-program  "sample-text/emacs-program"        ;; Give a reference a relative filepath to the text it should reference
                            :hello-world    "sample-text/hello-world"          ;; References defined here are available in descendant demos
                            :lorem-ipsum    "sample-text/lorem-ipsum") 
       
       :playlists     (list (list :name   "Playlist 1"                         ;; *Name of playlist
-                                 :demos  (list (list :name   "Oranges"        ;; *Name of demo
+                                 :demos  (list (list :name   "Demo 1"         ;; *Name of demo
                                                      :macro  "M-f C-k C-n M-f C-k C-n M-f C-k C-n M-f C-k C-n M-f C-k C-n M-f C-k C-n M-f C-k" ;; *The formatted representation of the macro to be executed
                                                      :text   :lorem-ipsum)    ;; *Set demo text to be the text refernced by `:lorem-ipsum'
 
-                                               (list :name   "Apples"
-                                                     :macro  "a b c d e f g"
-                                                     :text   "blahblahblah")))  ;; *Text can also be specified inline
+                                               (list :name   "Demo 2"
+                                                     :macro  "2*M-f M-b 5*C-d g o o d b y e SPC c r u e l"
+                                                     :text   "(message \"hello world\")")))  ;; *Text can also be specified inline
 
                            (list :name   "Playlist 2" ;; Declare as many playlists as you like
                                  ;; Similar demos should be grouped together
-                                 :demos  (list (list :name    "Durp"
+                                 :demos  (list (list :name    "Demo 1"
                                                      :macro  "a b c d e f g"
                                                      :text   :hello-world)))))
