@@ -115,7 +115,7 @@ The first encountered non-nil value is returned."
       (with-current-buffer messages-buffer
         (goto-char (point-max))
         (newline
-         (insert (if cmd cmd (prin1-to-string this-command))))))))
+         (insert (format "%s - %s" (key-description (this-command-keys)) this-command)))))))
 
 (defun shorty-messages-remove-log-command-hook ()
   "TODO"
