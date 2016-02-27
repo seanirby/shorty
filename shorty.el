@@ -275,8 +275,7 @@ Valid values for DIR are :previous and :next."
 
 (defun shorty-demo-buffers-init (demo-buffer messages-buffer props)
   "Places buffer in a state such that a demo can be run."
-  (let ((name (plist-get props :name))
-        (text (plist-get props :text))
+  (let ((text (plist-get props :text))
         (major-mode (plist-get props :major-mode))
         (minor-modes (plist-get props :minor-modes)))
     (with-current-buffer demo-buffer
@@ -291,7 +290,7 @@ Valid values for DIR are :previous and :next."
       (goto-char (point-min)))
     (with-current-buffer messages-buffer
       (erase-buffer)
-      (insert name))))
+      )))
 
 (defun shorty-demo-buffers-display (demo-buffer messages-buffer)
   "TODO"
