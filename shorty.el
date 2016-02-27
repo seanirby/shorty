@@ -213,7 +213,8 @@ Valid values for DIR are :previous and :next."
           (shorty-state-update :demo-index demo-index-new)
           (shorty-state-update :demo-props demo-props)
           (shorty-demo-open demo-props t))
-      (message "Cannot proceed in that direction."))))
+      (message "Cannot proceed in that direction.")
+      (shorty-demo-menu/body))))
 
 (defun shorty-demo-previous ()
   "Play the previous demo in current album."
