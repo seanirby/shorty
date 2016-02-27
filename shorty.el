@@ -56,6 +56,23 @@ Value represents the number of seconds between individual key/chord presses.")
   "TODO"
   (setq shorty-state (plist-put shorty-state prop val)))
 ;;** Helpers               General purpose utility functions
+(defun shorty-get-file-contents (filepath)
+  ""
+  (with-temp-buffer
+    (insert-file-contents filepath)
+    (buffer-string)))
+
+(defun shorty-plist-keys (plist)
+  "Extract property keys from PLIST"
+  (let ((len (length plist))
+        (flagged nil)
+        even-elms
+        )
+    (when (evenp len)
+      (dotimes (i len even-elms)
+        (when (evenp i)
+          (setq even-elms (cons (nth i plist) even-elms)))))))
+
 (defun shorty-macro-string-to-list (macro-str)
   "Convert , MACRO-STR, to elisp-readable vector format."
   (cl-flet ((f (key-seq-str)
