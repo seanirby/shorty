@@ -244,13 +244,10 @@ Valid values for DIR are :previous and :next."
   "Slowly executes the macro referred to by the macro arg."
   (let (key
         (update-period (if shorty-debug 0.05 shorty-update-period)))
-    (dolist (key (shorty-macro-string-to-list macro))
-      (with-current-buffer demo-buffer
-        (sit-for update-period)
-        (shorty-messages-log-command
-         (format "%s" (key-binding (vector key))))
+    (with-current-buffer demo-buffer
+      (dolist (key (shorty-macro-string-to-list macro))
         (execute-kbd-macro (vector key))
-        ))))
+        (sit-for update-period)))))
 
 (defun shorty-demo-open (props &optional buffers-ready-p)
   "TODO"
