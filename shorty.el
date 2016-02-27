@@ -120,27 +120,17 @@ The first encountered non-nil value is returned."
 (defun shorty-messages-remove-log-command-hook ()
   "TODO"
   (remove-hook 'pre-command-hook 'shorty-messages-log-command t))
-;;** Micro Menu            Functions related to the menu that's displayed in the demo buffer 
-(defun shorty-micro-menu-show ()
-  "TODO"
-  (save-excursion
-    (goto-char (point-min))
-    (insert (shorty-micro-menu-text))))
+;;** Menu (Hydra)
+(defhydra shorty-demo-menu (:exit t
+                            :hint nil)
+  "Demo Actions"
+  ("n" shorty-demo-next "Next Demo")
+  ("p" shorty-demo-previous "Previous Demo")
+  ("r" shorty-demo-replay "Replay")
+  ("q" shorty-demo-quit "Quit")
+  ("t" shorty-demo-try "Try it out")
+  )
 
-(defun shorty-micro-menu-text ()
-  "TODO"
-  (shorty-micro-menu-propertize
-   (concat
-    "Press one of the following keys to select an action:\n\n"
-    "[n]ext demo\n"
-    "[r]eplay demo\n"
-    "[p]revious demo\n\n"
-    "[t]ry it out\n"
-    "[q]uit\n\n")))
-
-(defun shorty-micro-menu-propertize (str)
-  "TODO"
-  (propertize str 'face '(:foreground "green")))
 ;;** Demos                 Functions related to demos
 ;;*** Data
 (defun shorty-demo-check-props (props)
