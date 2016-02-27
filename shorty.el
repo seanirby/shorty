@@ -459,12 +459,17 @@ be returned instead."
 (defun shorty-album-buffer-open ()
   "TODO"
   (interactive)
-  (find-file "my-albums.shorty")
-  (with-current-buffer "my-albums.shorty"
-    (cl--set-buffer-substring (point-min) (point-max) "" )
-    (shorty-album-buffer-build-loop (shorty-album-list) '(:playlists :demos) "*")
-    (goto-char (point-min))
-    (read-only-mode)))
+  (let ((last-buffer (current-buffer)))
+    (find-file "my-albums.shorty")
+    (delete-other-windows)
+    (split-window-right)
+    (switch-to-buffer last-buffer)
+    (other-window 1)
+    (with-current-buffer "my-albums.shorty"
+      (cl--set-buffer-substring (point-min) (point-max) "" )
+      (shorty-album-buffer-build-loop (shorty-album-list) '(:playlists :demos) "*")
+      (goto-char (point-min))
+      (read-only-mode))))
 
 ;;*** Hooks
 (setq shorty-album-mode-hook nil)
