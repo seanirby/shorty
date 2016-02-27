@@ -36,10 +36,11 @@
 ;;** Config                User configuration variables
 (defvar shorty-album-list nil)
 
-(defvar shorty-update-period 0.25
+(defvar shorty-update-period 0.5
   "Defines how fast shorty will play a macro demo.
 Value represents the number of seconds between individual key/chord presses.")
 ;;** State                 `shorty-state' var and related functions
+
 (defvar shorty-state (list :album             nil
                            :album-buffer      nil
                            :playlist          nil
