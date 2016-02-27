@@ -29,6 +29,7 @@
 ;;** Constants             Project constants 
 (defvar shorty-buffer-name "*shorty*")
 
+;;;###autoload
 (defvar shorty-directory (file-name-directory load-file-name))
 
 (defvar shorty-messages-buffer-name "*shorty-messages*")
