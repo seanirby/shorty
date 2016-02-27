@@ -534,5 +534,6 @@ Level | Type
 (setq shorty-album-list nil)
 (add-to-list 'shorty-album-list 'shorty-sample-album)
 
+(provide 'shorty)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; shorty.el ends here
