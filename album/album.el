@@ -25,7 +25,7 @@
       
       :playlists     (list (list :name   "Playlist 1"                         ;; *Name of playlist
                                  :demos  (list (list :name   "Oranges"        ;; *Name of demo
-                                                     :macro  "a b c d e f g"  ;; *The formatted representation of the macro to be executed
+                                                     :macro  "M-f C-k C-n M-f C-k C-n M-f C-k C-n M-f C-k C-n M-f C-k C-n M-f C-k C-n M-f C-k" ;; *The formatted representation of the macro to be executed
                                                      :text   :lorem-ipsum)    ;; *Set demo text to be the text refernced by `:lorem-ipsum'
 
                                                (list :name   "Apples"
