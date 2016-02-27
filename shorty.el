@@ -68,9 +68,9 @@ Value represents the number of seconds between individual key/chord presses.")
         (flagged nil)
         even-elms
         )
-    (when (evenp len)
+    (when (cl-evenp len)
       (dotimes (i len even-elms)
-        (when (evenp i)
+        (when (cl-evenp i)
           (setq even-elms (cons (nth i plist) even-elms)))))))
 
 (defun shorty-macro-string-to-list (macro-str)
