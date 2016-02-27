@@ -25,6 +25,7 @@
 ;;; Code:
 ;;** Dependencies          Project dependencies 
 (require 'cl-lib)
+(require 'hydra)
 (require 'manage-minor-mode)
 ;;** Constants             Project constants 
 (defvar shorty-buffer-name "*shorty*")
