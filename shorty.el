@@ -256,6 +256,12 @@ Valid values for DIR are :previous and :next."
   "Replay the current demo."
   (interactive)
   (shorty-demo-open (plist-get shorty-state :demo-props) t))
+
+(defun shorty-demo-try ()
+  (interactive)
+  (message "Press Something to get back to the menu")
+  )
+
 ;;*** Buffers
 (defun shorty-demo-press-keys (demo-buffer messages-buffer macro)
   "Slowly executes the macro referred to by the macro arg."
