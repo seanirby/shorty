@@ -1,0 +1,212 @@
+(defun shorty-album-build-name (name)
+  (let* ((prompt "Enter your album's name:")
+         (prompt-existing (format "Existing album name is: %s\n\nEnter new album name:" nil)))
+    (read-string (if name prompt-existing prompt))))
+
+
+(defun shorty-album-build-remove-playlist (playlists)
+  (let* ((names (mapcar (lambda (p) (plist-get p :name)) playlists))
+         (name (completing-read "Pick a playlist to remove:" names))
+         )
+    (cl-remove-if-not (lambda (p) (not (equal name (plist-get p :name)))) playlists)))
+
+
+(defun shorty-album-build-add-minor-mode (minor-modes)
+  (add-to-list 'minor-modes (intern (completing-read "Pick a minor mode to add: " minor-mode-list)))
+  )
+
+(defun shorty-album-build-remove-minor-mode (minor-modes)
+  (remove (intern (completing-read "Pick a minor mode to remove: " minor-modes)) minor-modes)
+  )
+
+(defun shorty-album-build-add-remove (list-sym add-f remove-f)
+  (let* ((list (symbol-value list-sym))
+         (list-name (symbol-name list-sym))
+         (action-prompt (format "Choose update action for %s:\n\n[a]dd\n[r]emove" list-name))
+         (info-prompt (format "Your %s are : %s" list-name list))
+         (prompt-opt (concat action-prompt "\n\n" info-prompt "\n\n")))
+    (if list
+        (let ((choice (read-char-choice prompt-opt '(?a ?r ?d))))
+          (cl-case choice
+            ;; it is presumed that the author would have the minor mode on his/her emacs
+            (?a (funcall add-f list))
+            (?r (funcall remove-f list))))
+      (progn (funcall add-f list)))))
+
+(defun shorty-album-build-remove-text-ref (text-refs)
+  (let* ((key (read (completing-read "Pick a text-ref to remove: " (shorty-plist-keys text-refs))))
+         (value (plist-get text-refs key)))
+    (remove value (remove key text-refs))
+    ))
+
+(defun shorty-album-build-add-text-ref (album-dir text-refs)
+  (let* ((name (read-string "Choose a name for your text-ref:"))
+         (filename (concat album-dir name ".el")))
+    (plist-put text-refs (intern (concat ":" name)) (concat name ".el"))
+    ))
+
+(defun shorty-album-build-text-refs (refs)
+  ;; TODO replace with a call to a make text reference func
+  (let* ((dir  (read-string "Enter a directory that contains or will contain your text reference:"))
+         (name (intern (concat ":" (read-string "Choose a name for this reference")))))
+    (reverse (cons (list name dir) (reverse refs)))))
+
+(defun shorty-album-build-prompt (album prompt)
+  (let ((album-string (with-temp-buffer
+                        (emacs-lisp-mode)
+                        (insert (pp-to-string album))
+                        (indent-region (point-min)(point-max) nil)
+                        (buffer-string)))
+        (current-album-prompt (when album (format "Your album so far:\n\n%s\n\n" (pp-to-string album)))))
+    (concat current-album-prompt prompt)))
+
+(defun shorty-repeat-str (str repeat-amt)
+  (cond
+   ((<= repeat-amt 0)
+    "")
+
+   ((equal 1 repeat-amt)
+    str)
+
+   (t (let ((str-new str))
+        (dotimes (i (1- repeat-amt) str-new)
+          (setq str-new (concat str str-new)))))))
+
+(defun shorty-pp-plist (plist &optional level)
+  (let ((acc "")
+        (level (or level ""))
+        (plist-len (length plist))
+        (i 0)
+        )
+    (while (<= 0  i (1- plist-len))
+      (let ((item (nth i plist))
+            (last-item-p (equal i (1- plist-len))))
+        (cond
+         ((and (evenp i) (or (equal item :demos)
+                             (equal item :playlists)
+                             (equal item :text-refs)))
+          (let ((pp-func (if (equal item :text-refs)
+                             'shorty-pp-plist
+                           'shorty-pp-list)))
+            (setq acc (concat acc
+                              level (symbol-name item) "\n"
+                              (funcall pp-func (nth (1+ i) plist) (concat level "  "))))
+            (setq i (1+ i))))
+
+         ((evenp i)
+          (setq acc (concat acc
+                            level (symbol-name item) " ")))
+
+         (t (setq acc (concat acc
+                              (prin1-to-string item) (if last-item-p "\n\n" "\n")))))
+        (setq i (1+ i)))
+      )
+    acc))
+
+(defun shorty-pp-list (list &optional level)
+  (let (acc
+        i
+        (list-len (length list)))
+    (dotimes (i list-len acc)
+      (let* ((item (nth i list))
+             (last-item-p (equal i (1- list-len))))
+        (setq acc (concat acc
+                          (shorty-pp-plist item (concat level "  "))
+                          ))))))
+
+(defun shorty-album-build-update-buffer (album)
+  (with-current-buffer "album.el"
+    (kill-region (point-min) (point-max))
+    (insert (shorty-pp-plist album))))
+
+(defun shorty-album-build-album (dir)
+  (interactive "DEnter a directory for this album:")
+  (let ((filepath (format "%s/%s" dir "album.el")))
+    (unless (file-directory-p dir)
+      (make-directory dir))
+    (find-file filepath)
+    )
+
+  (let ((album (list :directory dir))
+        prompt)
+
+    (shorty-album-build-update-buffer album)
+    (let* ((name (plist-get album :name))
+           (name-new (shorty-album-build-name name))
+           )
+      (setq album (plist-put album :name name-new)))
+
+    (shorty-album-build-update-buffer album)
+    (setq prompt (concat "Minor modes entered here will be turned on in all child demos.\n"
+                         "You may override this by providing a `:minor-modes' property on a\n"
+                         "playlist or demo.\n\n"
+                         "Would you like to add any minor-modes now?\n"
+                         ))
+    (while (y-or-n-p prompt)
+
+      (let* ((minor-modes (plist-get album :minor-modes))
+             (add 'shorty-album-build-add-minor-mode)
+             (remove 'shorty-album-build-remove-minor-mode)
+             (minor-modes-new (shorty-album-build-add-remove 'minor-modes add remove)))
+        (setq album (plist-put album :minor-modes minor-modes-new))
+        (shorty-album-build-update-buffer album)
+        (setq prompt "Would you like to add or remove any minor modes?")))
+
+    (setq prompt (concat 
+                  "Text references can be used as the `:text' property for child demo.\n"
+                  "The contents of the file that a text reference points to will be \n"
+                  "used as the starting text for that particular demo.\n\n"
+                  "Would you like to add any text references now?\n") )
+    (while (y-or-n-p prompt)
+      (let* ((text-refs (plist-get album :text-refs))
+             (album-dir (plist-get album :directory))
+             (add (apply-partially'shorty-album-build-add-text-ref album-dir))
+             (remove 'shorty-album-build-remove-text-ref)
+             (text-refs-new (shorty-album-build-add-remove 'text-refs add remove)))
+        (setq album (plist-put album :text-refs text-refs-new))
+        (shorty-album-build-update-buffer album)
+        (setq prompt "Would you like add or remove any text references?")))
+    ;; TODO should build text-ref files here
+    
+    (let ((playlist-name (read-string (concat "Playlists are containers for demos.  You should group similar demos\n"
+                                              "in playlists.\n\n"
+
+                                              "Let's add a placeholder playlist.  You can add demos to a playlist\n"
+                                              "later on by running the command TODO-INSERT-CoMMAND.\n\n"
+                                              "Enter the name for your first playlist:"))))
+      (setq album (plist-put album :playlists (list (list :name playlist-name :demos nil)))))
+
+    (shorty-album-build-update-buffer album)
+    (setq prompt "Would you like to add any more playlist placeholders?")
+    (while (y-or-n-p prompt)
+      (let* ((playlists (plist-get album :playlists))
+             (add (lambda (playlists) (add-to-list 'playlists (list :name (read-string "Enter a name for this playlist") :demos nil))))
+             (remove 'shorty-album-build-remove-playlist)
+             (playlists-new (shorty-album-build-add-remove 'playlists add remove)))
+        (setq album (plist-put album :playlists playlists-new))
+        (shorty-album-build-update-buffer album)
+        (setq prompt "Would you like to add or remove any playlist placeholders?")))
+
+    (with-current-buffer "album.el"
+      (kill-region (point-min) (point-max))
+      (let ((str (prin1-to-string (cons 'list (shorty-prepend-lists album)))))
+        (insert (replace-regexp-in-string "^  :minor-modes " "  :minor-modes '" str))
+        (goto-char (point-min))
+        (srefactor-lisp-format-sexp)))))
+
+(prin1-to-string ''(1 2 3 4) t)
+
+(list blah blah
+      )
+
+(defun shorty-prepend-lists (list)
+  (when list
+    (let ((first (car list)))
+      (if (and (consp first)
+               ;;minor-modes property needs to be a quoted list
+               (not (equal first :minor-modes))) 
+          (let ((new (cons 'list (shorty-prepend-lists first))))
+            (cons new (shorty-prepend-lists (cdr list))))
+        (cons first (shorty-prepend-lists (cdr list)))))))
+
+
