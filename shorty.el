@@ -57,6 +57,31 @@ Value represents the number of seconds between individual key/chord presses.")
   "TODO"
   (setq shorty-state (plist-put shorty-state prop val)))
 ;;** Helpers               General purpose utility functions
+(defun shorty-find (data keys)
+  "Access nested data in DATA given by KEYS.
+
+Keys are either keywords or integer indices."
+  (if (or (equal nil data) (equal nil keys))
+      data
+    (let ((key (car keys)))
+      (if (integerp key)
+          (shorty-find (nth key data) (cdr keys))
+        (shorty-find (shorty-get-in data key) (cdr keys))))))
+
+(defun shorty-update-in (data keys func)
+  "Update nested data in DATA given by KEYS.
+
+Keys are either keywords or integer indices.  The argument FUNC is a
+function that is called with the value to be updated(the value pointed
+at by KEYS)."
+  (if (equal nil data)
+      data
+    (let* ((key (car keys))
+           (value (plist-get data key)))
+      (if (equal 0 (length (cdr keys)))
+          (plist-put data key (funcall func value))
+        (plist-put data key (shorty-update-in value (cdr keys) func))))))
+
 (defun shorty-get-file-contents (filepath)
   ""
   (with-temp-buffer
@@ -159,9 +184,9 @@ The first encountered non-nil value is returned."
 
 Accepts the DEMO, the demo's parent PLAYLIST, 
 and the playlist's parent ALBUM.  All values are plists."
-  (let* ((album    (shorty-album-find-album album-index))
-         (playlist (shorty-album-find album `(:playlists ,playlist-index)))
-         (demo     (shorty-album-find playlist `(:demos ,demo-index)))
+  (let* ((album    (shorty-find-album album-index))
+         (playlist (shorty-find album `(:playlists ,playlist-index)))
+         (demo     (shorty-find playlist `(:demos ,demo-index)))
          (props    (list :name        (shorty-get-in demo :name)
                          :macro       (shorty-get-in demo :macro)
                          :text        (shorty-demo-get-text album playlist demo)
@@ -340,31 +365,20 @@ Valid values for DIR are :previous and :next."
 (defun shorty-album-list ()
   (mapcar 'symbol-value shorty-album-list))
 
-(defun shorty-album-find (data accessors)
-  "Access nested data in DATA by supplying a series of ACCESSORS.
-
-Accessors are either keywords or integer indices."
-  (if (or (equal nil data) (equal nil accessors))
-      data
-    (let ((accessor (car accessors)))
-      (if (integerp accessor)
-          (shorty-album-find (nth accessor data) (cdr accessors))
-        (shorty-album-find (shorty-get-in data accessor) (cdr accessors))))))
-
 (defun shorty-album-find-album (album-index)
-  (shorty-album-find (shorty-album-list) (list album-index)))
+  (shorty-find (shorty-album-list) (list album-index)))
 
 (defun shorty-album-find-playlists (album-index)
-  (shorty-album-find (shorty-album-list) (list album-index :playlists)))
+  (shorty-find (shorty-album-list) (list album-index :playlists)))
 
 (defun shorty-album-find-playlist (album-index playlist-index)
-  (shorty-album-find (shorty-album-list) (list album-index :playlists playlist-index)))
+  (shorty-find (shorty-album-list) (list album-index :playlists playlist-index)))
 
 (defun shorty-album-find-demos (album-index playlist-index)
-  (shorty-album-find (shorty-album-list) (list album-index :playlists playlist-index :demos)))
+  (shorty-find (shorty-album-list) (list album-index :playlists playlist-index :demos)))
 
 (defun shorty-album-find-demo (album-index playlist-index demo-index)
-  (shorty-album-find (shorty-album-list) (list album-index :playlists playlist-index :demos demo-index)))
+  (shorty-find (shorty-album-list) (list album-index :playlists playlist-index :demos demo-index)))
 
 (defun shorty-album-build-insert-last-macro-string ()
   (interactive)
