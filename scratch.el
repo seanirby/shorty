@@ -1,15 +1,21 @@
+
+(defvar shorty-album-header-info
+  (concat ";; The expression below defines your demo album.\n\n"
+          ";; You can edit it manually and you can use \n"
+          ";; `shorty-build-demo' command to open an interactive tool\n"
+          ";; for creating demos.\n\n"
+          ))
+
 (defun shorty-album-build-name (name)
   (let* ((prompt "Enter your album's name:")
          (prompt-existing (format "Existing album name is: %s\n\nEnter new album name:" nil)))
     (read-string (if name prompt-existing prompt))))
-
 
 (defun shorty-album-build-remove-playlist (playlists)
   (let* ((names (mapcar (lambda (p) (plist-get p :name)) playlists))
          (name (completing-read "Pick a playlist to remove:" names))
          )
     (cl-remove-if-not (lambda (p) (not (equal name (plist-get p :name)))) playlists)))
-
 
 (defun shorty-album-build-add-minor-mode (minor-modes)
   (add-to-list 'minor-modes (intern (completing-read "Pick a minor mode to add: " minor-mode-list)))
@@ -157,6 +163,7 @@
                   "The contents of the file that a text reference points to will be \n"
                   "used as the starting text for that particular demo.\n\n"
                   "Would you like to add any text references now?\n") )
+
     (while (y-or-n-p prompt)
       (let* ((text-refs (plist-get album :text-refs))
              (album-dir (plist-get album :directory))
@@ -187,26 +194,36 @@
         (shorty-album-build-update-buffer album)
         (setq prompt "Would you like to add or remove any playlist placeholders?")))
 
+    ;; wrap minor modes in quotes
+    (let ((minor-modes (plist-get album :minor-modes)))
+      (when minor-modes
+        (setq album (plist-put album :minor-modes (mapcar (lambda (m) (list 'quote m)) minor-modes)))))
+
     (with-current-buffer "album.el"
       (kill-region (point-min) (point-max))
       (let ((str (prin1-to-string (cons 'list (shorty-prepend-lists album)))))
-        (insert (replace-regexp-in-string "^  :minor-modes " "  :minor-modes '" str))
+        (insert str)
         (goto-char (point-min))
-        (srefactor-lisp-format-sexp)))))
+        (srefactor-lisp-format-buffer)
+        (goto-char (point-min))
+        (insert shorty-album-header-info)
+        (let ((dir (plist-get album :directory))
+              (filenames (cl-remove-if-not 'stringp (plist-get album :text-refs))))
+          (dolist (file filenames)
+            (with-temp-file (concat dir file)
+              (insert (format (concat "Stub text for %s\n\n"
+                                      "Replace with the text you want to appear in the demo.") file)))
+            )
+          (message "Stub files for your text-references have been created in %s" dir)
+          )
 
-(prin1-to-string ''(1 2 3 4) t)
-
-(list blah blah
-      )
+        ))))
 
 (defun shorty-prepend-lists (list)
   (when list
-    (let ((first (car list)))
+    (let* ((first (car list)))
       (if (and (consp first)
-               ;;minor-modes property needs to be a quoted list
-               (not (equal first :minor-modes))) 
-          (let ((new (cons 'list (shorty-prepend-lists first))))
+               (not (equal 'quote (car first)))) 
+          (let* ((new (cons 'list (shorty-prepend-lists first))))
             (cons new (shorty-prepend-lists (cdr list))))
         (cons first (shorty-prepend-lists (cdr list)))))))
-
-
