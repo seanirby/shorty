@@ -1,3 +1,5 @@
+(require 'srefactor)
+(require 'srefactor-lisp)
 
 (defvar shorty-album-header-info
   (concat ";; The expression below defines your demo album.\n\n"
@@ -5,11 +7,6 @@
           ";; `shorty-build-demo' command to open an interactive tool\n"
           ";; for creating demos.\n\n"
           ))
-
-(defun shorty-album-build-name (name)
-  (let* ((prompt "Enter your album's name:")
-         (prompt-existing (format "Existing album name is: %s\n\nEnter new album name:" nil)))
-    (read-string (if name prompt-existing prompt))))
 
 (defun shorty-album-build-remove-playlist (playlists)
   (let* ((names (mapcar (lambda (p) (plist-get p :name)) playlists))
@@ -26,6 +23,7 @@
   )
 
 (defun shorty-album-build-add-remove (list-sym add-f remove-f)
+
   (let* ((list (symbol-value list-sym))
          (list-name (symbol-name list-sym))
          (action-prompt (format "Choose update action for %s:\n\n[a]dd\n[r]emove" list-name))
@@ -37,19 +35,26 @@
             ;; it is presumed that the author would have the minor mode on his/her emacs
             (?a (funcall add-f list))
             (?r (funcall remove-f list))))
-      (progn (funcall add-f list)))))
+      (funcall add-f list))))
 
-(defun shorty-album-build-remove-text-ref (text-refs)
+(defun shorty-album-build-remove-text-ref (album-dir text-refs)
   (let* ((key (read (completing-read "Pick a text-ref to remove: " (shorty-plist-keys text-refs))))
-         (value (plist-get text-refs key)))
-    (remove value (remove key text-refs))
-    ))
+         (file (plist-get text-refs key))
+         (filename (concat album-dir file)))
+    (when (and (file-exists-p filename)
+               (y-or-n-p (format "Would you like to remove the file at %s" filename))
+               (delete-file filename)))
+    (remove file (remove key text-refs))))
 
 (defun shorty-album-build-add-text-ref (album-dir text-refs)
   (let* ((name (read-string "Choose a name for your text-ref:"))
-         (filename (concat album-dir name ".el")))
-    (plist-put text-refs (intern (concat ":" name)) (concat name ".el"))
-    ))
+         (filename (concat name ".el"))
+         (full-filename (concat album-dir filename)))
+    (when (y-or-n-p (format "Would you like to create a stub file at %s?" full-filename))
+      (with-temp-file full-filename
+        (insert (format (concat "Stub text for %s\n\n"
+                                "Replace with the text you want to appear in the demo.") filename))))
+    (plist-put text-refs (intern (concat ":" name)) filename)))
 
 (defun shorty-album-build-text-refs (refs)
   ;; TODO replace with a call to a make text reference func
@@ -109,6 +114,8 @@
       )
     acc))
 
+(shorty-pp-plist ta)
+
 (defun shorty-pp-list (list &optional level)
   (let (acc
         i
@@ -119,11 +126,6 @@
         (setq acc (concat acc
                           (shorty-pp-plist item (concat level "  "))
                           ))))))
-
-(defun shorty-album-build-update-buffer (album)
-  (with-current-buffer "album.el"
-    (kill-region (point-min) (point-max))
-    (insert (shorty-pp-plist album))))
 
 (defun shorty-album-build-album (dir)
   (interactive "DEnter a directory for this album:")
@@ -137,10 +139,7 @@
         prompt)
 
     (shorty-album-build-update-buffer album)
-    (let* ((name (plist-get album :name))
-           (name-new (shorty-album-build-name name))
-           )
-      (setq album (plist-put album :name name-new)))
+    (setq album (shorty-album-edit-name album))
 
     (shorty-album-build-update-buffer album)
     (setq prompt (concat "Minor modes entered here will be turned on in all child demos.\n"
@@ -150,13 +149,9 @@
                          ))
     (while (y-or-n-p prompt)
 
-      (let* ((minor-modes (plist-get album :minor-modes))
-             (add 'shorty-album-build-add-minor-mode)
-             (remove 'shorty-album-build-remove-minor-mode)
-             (minor-modes-new (shorty-album-build-add-remove 'minor-modes add remove)))
-        (setq album (plist-put album :minor-modes minor-modes-new))
-        (shorty-album-build-update-buffer album)
-        (setq prompt "Would you like to add or remove any minor modes?")))
+      (setq album (shorty-album-edit-minor-modes album))
+      (shorty-album-build-update-buffer album)
+      (setq prompt "Would you like to add or remove any minor modes?"))
 
     (setq prompt (concat 
                   "Text references can be used as the `:text' property for child demo.\n"
@@ -165,14 +160,9 @@
                   "Would you like to add any text references now?\n") )
 
     (while (y-or-n-p prompt)
-      (let* ((text-refs (plist-get album :text-refs))
-             (album-dir (plist-get album :directory))
-             (add (apply-partially'shorty-album-build-add-text-ref album-dir))
-             (remove 'shorty-album-build-remove-text-ref)
-             (text-refs-new (shorty-album-build-add-remove 'text-refs add remove)))
-        (setq album (plist-put album :text-refs text-refs-new))
-        (shorty-album-build-update-buffer album)
-        (setq prompt "Would you like add or remove any text references?")))
+      (setq album (shorty-album-edit-text-refs album))
+      (shorty-album-build-update-buffer album)
+      (setq prompt "Would you like add or remove any text references?"))
     ;; TODO should build text-ref files here
     
     (let ((playlist-name (read-string (concat "Playlists are containers for demos.  You should group similar demos\n"
@@ -195,9 +185,7 @@
         (setq prompt "Would you like to add or remove any playlist placeholders?")))
 
     ;; wrap minor modes in quotes
-    (let ((minor-modes (plist-get album :minor-modes)))
-      (when minor-modes
-        (setq album (plist-put album :minor-modes (mapcar (lambda (m) (list 'quote m)) minor-modes)))))
+    (setq album (shorty-album-quote-minor-modes album))
 
     (with-current-buffer "album.el"
       (kill-region (point-min) (point-max))
@@ -207,17 +195,15 @@
         (srefactor-lisp-format-buffer)
         (goto-char (point-min))
         (insert shorty-album-header-info)
-        (let ((dir (plist-get album :directory))
-              (filenames (cl-remove-if-not 'stringp (plist-get album :text-refs))))
-          (dolist (file filenames)
-            (with-temp-file (concat dir file)
-              (insert (format (concat "Stub text for %s\n\n"
-                                      "Replace with the text you want to appear in the demo.") file)))
-            )
-          (message "Stub files for your text-references have been created in %s" dir)
-          )
-
+        (save-buffer)
         ))))
+
+(defun shorty-album-quote-minor-modes (album)
+    ;; wrap minor modes in quotes
+    (let ((minor-modes (plist-get album :minor-modes)))
+      (if minor-modes
+          (plist-put album :minor-modes (mapcar (lambda (m) (list 'quote m)) minor-modes))
+        album)))
 
 (defun shorty-prepend-lists (list)
   (when list
@@ -227,3 +213,165 @@
           (let* ((new (cons 'list (shorty-prepend-lists first))))
             (cons new (shorty-prepend-lists (cdr list))))
         (cons first (shorty-prepend-lists (cdr list)))))))
+
+(setq shorty-last-album-file nil)
+
+(defun shorty-album-open-demo-stage ()
+  (message "starting demo"))
+
+(defun shorty-albump (album)
+  (message "Checking if album is valid")
+  )
+
+(defun shorty-album-pick-album (album)
+  ;; TODO Should be able to pick a file or an
+  ;; album containing a file
+  (interactive "fChoose your album file:")
+  album
+  )
+
+(defun shorty-album-read-file (album-file)
+  (eval (read (with-temp-buffer
+                (insert-file-contents album-file)
+                (buffer-string))))
+  )
+
+(defun shorty-save-album-backup (filename-full album-content)
+  (with-temp-file filename-full
+    (insert album-content)))
+
+;; TODO make this function safe
+(defun shorty-save-album (album)
+  (let* ((dir (plist-get album :directory))
+         (filename-full (format "%salbum.el" dir))
+         (buffer (or (get-file-buffer filename-full)
+                     (create-file-buffer filename-full)))
+         (album-content-old (with-current-buffer buffer (buffer-string)))
+         (album (shorty-album-quote-minor-modes album)))
+
+    (shorty-save-album-backup (format "%s/album-backup.el" dir) album-content-old)
+
+    (with-current-buffer buffer
+      (kill-region (point-min) (point-max))
+      (let ((str (prin1-to-string (cons 'list (shorty-prepend-lists album)))))
+        (insert str)
+        (goto-char (point-min))
+        (srefactor-lisp-format-buffer)
+        (goto-char (point-min))
+        (insert shorty-album-header-info)
+        (write-file filename-full)
+        ))))
+
+;; TODO remove these
+(my-keys-add "C-χ" 'shorty-build-menu)
+(my-keys-add "C-σ" 'shorty-album-build-album)
+
+
+;;;; Present option 
+(defun shorty-album-edit (album)
+  (interactive)
+  (let ((keep-editing t))
+    (while keep-editing
+      (let* ((props (list ":name" ":minor-modes" ":text-refs"))
+             (prop (intern (completing-read "Choose a property you'd like to edit:" props))))
+        (setq album (case prop
+                      (:name (shorty-album-edit-name album))
+                      (:minor-modes (shorty-album-edit-minor-modes album))
+                      (:text-refs (shorty-album-edit-text-refs album))
+                      ))
+        (shorty-album-visualizer album)
+        (setq keep-editing (y-or-n-p "Keep editing?"))
+        (shorty-save-album album)
+        ))))
+
+(defun shorty-album-edit-name (album)
+  (let ((name (read-string "Choose a name for your album: ")))
+    (plist-put album :name name)))
+
+(defun shorty-album-edit-minor-modes (album)
+  (let* ((minor-modes (plist-get album :minor-modes))
+         (add 'shorty-album-build-add-minor-mode)
+         (remove 'shorty-album-build-remove-minor-mode)
+         (minor-modes-new (shorty-album-build-add-remove 'minor-modes add remove)))
+    (plist-put album :minor-modes minor-modes-new)))
+
+(defun shorty-album-edit-text-refs (album)
+  (let* ((text-refs (plist-get album :text-refs))
+         (album-dir (plist-get album :directory))
+         (add (apply-partially 'shorty-album-build-add-text-ref album-dir))
+         (remove (apply-partially 'shorty-album-build-remove-text-ref album-dir))
+         (text-refs-new (shorty-album-build-add-remove 'text-refs add remove)))
+    (plist-put album :text-refs text-refs-new)))
+
+(defun shorty-playlist-add (album)
+  (interactive)
+  (message "blah"))
+(defun shorty-playlist-edit (album)
+  (interactive)
+  (message "blah"))
+(defun shorty-playlist-remove (album)
+  (interactive)
+  (message "blah"))
+(defun shorty-demo-add (album)
+  (interactive)
+  (message "blah"))
+(defun shorty-demo-edit (album)
+  (interactive)
+  (message "blah"))
+(defun shorty-demo-remove (album)
+  (interactive)
+  (message "blah"))
+
+(setq shorty-build-menu-actions
+    (list "shorty-album-edit"
+          "shorty-playlist-add"
+          "shorty-playlist-edit"
+          "shorty-playlist-remove"
+          "shorty-demo-add"
+          "shorty-demo-edit"
+          "shorty-demo-remove"
+          ))
+
+(defun shorty-build-menu ()
+  (interactive)
+  (let* ((album-file (if shorty-last-album-file
+                         shorty-last-album-file
+                       (if (y-or-n-p "Do you have an exisitng album you'd like to use?")
+                           ;; TODO these albums shouldn't be commands.
+                           ;; But how to use interactive codes?
+                           (call-interactively 'shorty-album-pick-album)
+                         ;; TODO this doesn't work
+                         ;; Need ot add advice ot this function
+                         (call-interactively 'shorty-album-build-album))))
+         (album (when (shorty-albump album-file) (shorty-album-read-file album-file)))
+         (keep-editing t))
+    (if (not album)
+        (message (concat "The album menu cannot be opened since the album at %s is malformed.\n\n"
+                         "Check your album and try again.") album-file)
+      (while keep-editing
+        (shorty-album-visualizer album)
+        (setq shorty-last-album-file album-file)
+        (let ((action (completing-read "Choose an action: " shorty-build-menu-actions)))
+          (funcall (intern action) album)
+          (when (y-or-n-p "Back to album edit menu?") (setq keep-editing nil)))
+        )
+      )))
+
+;; TODO DELETE THIS
+(defun shorty-build-menu/body () 1)
+
+(defvar shorty-album-visualizer-buffer-name  "*shorty-album-visualizer*")
+(defun shorty-album-visualizer (album)
+  (let ())
+  (switch-to-buffer shorty-album-visualizer-buffer-name)
+  (with-current-buffer shorty-album-visualizer-buffer-name
+    ;; TODO using this for now to get basic highlighting
+    ;; Should write my own prettier mode
+    (emacs-lisp-mode)
+    (kill-region (point-min) (point-max))
+    (insert (shorty-pp-plist album))))
+
+(defun shorty-album-build-update-buffer (album)
+  (with-current-buffer "album.el"
+    (kill-region (point-min) (point-max))
+    (insert (shorty-pp-plist album))))
