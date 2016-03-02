@@ -76,11 +76,33 @@ function that is called with the value to be updated(the value pointed
 at by KEYS)."
   (if (equal nil data)
       data
-    (let* ((key (car keys))
-           (value (plist-get data key)))
-      (if (equal 0 (length (cdr keys)))
-          (plist-put data key (funcall func value))
-        (plist-put data key (shorty-update-in value (cdr keys) func))))))
+    (let ((key (car keys))
+          (at-lastp (equal 0 (length (cdr keys)))))
+
+      ;; Key is an index
+      (if (integerp key)
+          (let (list-new)
+            ;; TODO this is ugly and i'm not being
+            ;; efficient by using reverse.
+            ;; Thankfully this code doesn't to be fast,
+            ;; but I should make it more readable.
+            (reverse
+             (dotimes (i (length data) list-new)
+               (let ((elmt (nth i data)))
+                 (setq list-new
+                       (cons
+                        (if (equal i key)
+                            (if at-lastp
+                                (funcall func elmt)
+                              (shorty-update-in elmt (cdr keys) func))
+                          elmt)
+                        list-new))))))
+        
+        ;; Key is a keyword
+        (let* ((value (plist-get data key)))
+          (if at-lastp 
+              (plist-put data key (funcall func value))
+            (plist-put data key (shorty-update-in value (cdr keys) func))))))))
 
 (defun shorty-get-file-contents (filepath)
   ""
@@ -148,7 +170,7 @@ The first encountered non-nil value is returned."
   (remove-hook 'pre-command-hook 'shorty-messages-log-command t))
 ;;** Menu (Hydra)
 (defhydra shorty-demo-menu (:exit t
-                            :hint nil)
+                                  :hint nil)
   "Demo Actions"
   ("n" shorty-demo-next "Next Demo")
   ("p" shorty-demo-previous "Previous Demo")
