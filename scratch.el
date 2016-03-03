@@ -108,7 +108,7 @@
       (shorty-album-visualizer album)
       (setq prompt "Would you like to add or remove any minor modes?"))
 
-    (setq prompt (concat 
+    (setq prompt (concat
                   "Text references can be used as the `:text' property for child demo.\n"
                   "The contents of the file that a text reference points to will be \n"
                   "used as the starting text for that particular demo.\n\n"
@@ -118,7 +118,7 @@
       (setq album (shorty-album-edit-text-refs album))
       (shorty-album-visualizer album)      (setq prompt "Would you like add or remove any text references?"))
     ;; TODO should build text-ref files here
-    
+
     (let ((playlist-name (read-string (concat "Playlists are containers for demos.  You should group similar demos\n"
                                               "in playlists.\n\n"
 
@@ -161,7 +161,7 @@
   (when list
     (let* ((first (car list)))
       (if (and (consp first)
-               (not (equal 'quote (car first)))) 
+               (not (equal 'quote (car first))))
           (let* ((new (cons 'list (shorty-prepend-lists first))))
             (cons new (shorty-prepend-lists (cdr list))))
         (cons first (shorty-prepend-lists (cdr list)))))))
@@ -216,7 +216,7 @@
 (my-keys-add "C-χ" 'shorty-build-menu)
 (my-keys-add "C-σ" 'shorty-album-build-album)
 
-;;;; Present option 
+;;;; Present option
 (defun shorty-album-edit (album)
   (interactive)
   (let ((keep-editing t))
@@ -295,11 +295,10 @@
     ;; Get index of playlist
     (while (and (not index) (< i (length playlists)))
       (when (equal name (plist-get (nth i playlists) :name))
-        (setq index i)
-        (setq i (1+ i)))
+        (setq index i))
       (setq i (1+ i)))
     (setq playlist (nth index playlists))
-    
+
     (while keep-editing
       (let* ((props (list ":name" ":minor-modes"))
              (prop (intern (completing-read "Choose a property you'd like to edit:" props)))
@@ -328,8 +327,8 @@
           (cl-remove-if-not (lambda (p) (not (equal name (plist-get p :name)))) playlists)))
     (plist-put album :playlists playlists-filtered)))
 
-;; should allow you to 
-;; Lets you edit properties but you can also enter demo 
+;; should allow you to
+;; Lets you edit properties but you can also enter demo
 (defun shorty-demo-edit (album)
   (interactive)
   (message "blah"))
@@ -377,7 +376,8 @@
       (while keep-editing
         (let ((action (intern (completing-read "Choose an action: " shorty-build-menu-actions))))
           (if (equal action 'shorty-demo-record)
-              (funcall action)
+              (progn (funcall action album)
+                     (setq keep-editing nil))
             (setq album (funcall action album))
             (shorty-album-visualizer album)
             (shorty-save-album album)
@@ -385,7 +385,6 @@
 
 (defvar shorty-album-visualizer-buffer-name  "*shorty-album-visualizer*")
 (defun shorty-album-visualizer (album)
-  (let ())
   (switch-to-buffer shorty-album-visualizer-buffer-name)
   (with-current-buffer shorty-album-visualizer-buffer-name
     ;; TODO using this for now to get basic highlighting
@@ -394,4 +393,82 @@
     (kill-region (point-min) (point-max))
     (insert (shorty-pp-plist album))))
 
-(defun shorty-demo-record )
+(setq shorty-demo-editing nil)
+
+(defun shorty-demo-record (album)
+  (if (not (plist-get album :playlists))
+      (message "You must first define a playlist before you can record a demo.")
+    (unless (plist-get shorty-demo-editing :playlist-index)
+      (let* ((playlists (mapcar (lambda (p) (plist-get p :name)) (plist-get album :playlists)))
+             (playlist (completing-read "What playlist should this demo belong to: " playlists))
+             (playlist-index (shorty-get-index playlist playlists :name)))
+        (setq shorty-demo-editing (plist-put shorty-demo-editing :playlist-index playlist-index))))
+
+    (unless (plist-get shorty-demo-editing :name)
+      (let ((name (read-string "Enter a name for you demo: ")))
+        (setq shorty-demo-editing (plist-put shorty-demo-editing :name name))))
+
+    (unless (plist-get shorty-demo-editing :text)
+      (let* ((text-refs (shorty-plist-keys (plist-get album :text-refs)))
+             (text-input (completing-read "What should the starting text of this demo be?: "
+                                          text-refs))
+             (text (if (shorty-is-text-ref text-input album)
+                       (intern text-input)
+                     text-input)))
+
+        (setq shorty-demo-editing (plist-put shorty-demo-editing :text text))))
+
+    (unless (plist-get shorty-demo-editing :macro)
+      (setq shorty-demo-editing (plist-put shorty-demo-editing :macro "")))
+
+    (let* ((playlist (plist-get album :playlists))
+           (demo-props (shorty-demo-props album playlist shorty-demo-editing)))
+
+      (message (pp-to-string demo-props))
+
+      (if (y-or-n-p (format "%s\n\nPlease confirm this demo's starting properties before proceeding" demo-props))
+          (let* ((directory (plist-get album :directory))
+                 (text-prop (plist-get shorty-demo-editing :text))
+                 (content  (shorty-get-text text-prop album)))
+            (switch-to-buffer "*shorty-record-buffer*")
+            (with-current-buffer "*shorty-record-buffer*"
+              (kill-region (point-min) (point-max))
+              (goto-char (point-min))
+              (save-excursion (insert content))))
+        (message "Aborting")))
+    ))
+
+(defun shorty-get-text (text-prop album)
+  (if (shorty-is-text-ref text-prop album)
+      (let* ((album-dir (plist-get album :directory))
+             (text-refs (plist-get album :text-refs))
+             (filepath (plist-get text-refs text-prop))
+             (filepath-full (format "%s%s" album-dir filepath)))
+        (shorty-get-file-contents filepath-full))
+    (if (stringp text-prop)
+        text-prop
+      (message "A demo's :demo property must either be a text-ref or string")
+      "")))
+
+(defun shorty-is-text-ref (x album)
+  (let ((x (if (stringp x) (intern x) x)))
+    (when (keywordp x)
+      (let ((text-ref-keys
+             (shorty-plist-keys
+              (plist-get album :text-refs))))
+        (shorty-exists x text-ref-keys)))))
+
+(defun shorty-exists (x list)
+  (> (length (cl-remove-if-not
+              (lambda (elmt) (equal elmt x)) list))
+     0))
+
+(defun shorty-get-index (id list prop)
+  (let ((i 0)
+        index)
+    ;; Get index of playlist
+    (while (and (not index) (< i (length list)))
+      (when (equal id (plist-get (nth i list) prop))
+        (setq index i))
+      (setq i (1+ i)))
+    index))

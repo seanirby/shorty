@@ -201,14 +201,12 @@ The first encountered non-nil value is returned."
         string-or-keyword
       (shorty-get-in album :text-refs string-or-keyword))))
 
-(defun shorty-demo-props (album-index playlist-index demo-index)
+(defun shorty-demo-props (album playlist demo)
   "Get properties needed to run a demo.
 
 Accepts the DEMO, the demo's parent PLAYLIST, 
 and the playlist's parent ALBUM.  All values are plists."
-  (let* ((album    (shorty-find-album album-index))
-         (playlist (shorty-find album `(:playlists ,playlist-index)))
-         (demo     (shorty-find playlist `(:demos ,demo-index)))
+  (let* (
          (props    (list :name        (shorty-get-in demo :name)
                          :macro       (shorty-get-in demo :macro)
                          :text        (shorty-demo-get-text album playlist demo)
@@ -257,7 +255,10 @@ Valid values for DIR are :previous and :next."
          (demos           (shorty-album-find-demos album-index playlist-index))
          (demo-index-new  (+ demo-index (if (equal dir :previous) -1 +1))))
     (if (<= 0 demo-index-new (1- (length demos)))
-        (let ((demo-props (shorty-demo-props album-index playlist-index demo-index-new)))
+        (let* ((album    (shorty-find-album album-index))
+               (playlist (shorty-find album `(:playlists ,playlist-index)))
+               (demo     (shorty-find playlist `(:demos ,demo-index-new)))
+               (demo-props (shorty-demo-props album playlist demo)))
           (shorty-state-update :demo-index demo-index-new)
           (shorty-state-update :demo-props demo-props)
           (shorty-demo-open demo-props t))
@@ -450,7 +451,10 @@ playlists and demos are presented as in a read-only outline using
         (setq demo-index        (if (equal type :demo)
                                     (plist-get node-data :index)
                                   0))))
-    (let ((demo-props (shorty-demo-props album-index playlist-index demo-index)))
+    (let* ((album       (shorty-album-find-album album-index))
+           (playlist    (shorty-find album `(:playlists ,playlist-index)))
+           (demo        (shorty-find playlist `(:demos ,demo-index)))
+           (demo-props  (shorty-demo-props album playlist demo)))
       (when demo-props
         (shorty-state-update :album-index album-index)
         (shorty-state-update :playlist-index playlist-index)
