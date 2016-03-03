@@ -398,28 +398,38 @@
 (defun shorty-demo-record (album)
   (if (not (plist-get album :playlists))
       (message "You must first define a playlist before you can record a demo.")
+
+    (setq shorty-demo-editing
+          (plist-put shorty-demo-editing :directory (plist-get album :directory)))
+
     (unless (plist-get shorty-demo-editing :playlist-index)
       (let* ((playlists (mapcar (lambda (p) (plist-get p :name)) (plist-get album :playlists)))
              (playlist (completing-read "What playlist should this demo belong to: " playlists))
              (playlist-index (shorty-get-index playlist playlists :name)))
-        (setq shorty-demo-editing (plist-put shorty-demo-editing :playlist-index playlist-index))))
+        (setq shorty-demo-editing
+              (plist-put shorty-demo-editing :playlist-index playlist-index))))
 
     (unless (plist-get shorty-demo-editing :name)
       (let ((name (read-string "Enter a name for you demo: ")))
-        (setq shorty-demo-editing (plist-put shorty-demo-editing :name name))))
+        (setq shorty-demo-editing
+              (plist-put shorty-demo-editing :name name))))
 
     (unless (plist-get shorty-demo-editing :text)
       (let* ((text-refs (shorty-plist-keys (plist-get album :text-refs)))
              (text-input (completing-read "What should the starting text of this demo be?: "
                                           text-refs))
-             (text (if (shorty-is-text-ref text-input album)
+             (text-prop (if (shorty-is-text-ref text-input album)
                        (intern text-input)
                      text-input)))
 
-        (setq shorty-demo-editing (plist-put shorty-demo-editing :text text))))
+        (setq shorty-demo-editing
+              (plist-put shorty-demo-editing :text text-prop))
+        (setq shorty-demo-editing
+              (plist-put shorty-demo-editing :text-content (shorty-get-text text-prop album)))))
 
     (unless (plist-get shorty-demo-editing :macro)
-      (setq shorty-demo-editing (plist-put shorty-demo-editing :macro "")))
+      (setq shorty-demo-editing
+            (plist-put shorty-demo-editing :macro "")))
 
     (let* ((playlist (plist-get album :playlists))
            (demo-props (shorty-demo-props album playlist shorty-demo-editing)))
@@ -427,14 +437,7 @@
       (message (pp-to-string demo-props))
 
       (if (y-or-n-p (format "%s\n\nPlease confirm this demo's starting properties before proceeding" demo-props))
-          (let* ((directory (plist-get album :directory))
-                 (text-prop (plist-get shorty-demo-editing :text))
-                 (content  (shorty-get-text text-prop album)))
-            (switch-to-buffer "*shorty-record-buffer*")
-            (with-current-buffer "*shorty-record-buffer*"
-              (kill-region (point-min) (point-max))
-              (goto-char (point-min))
-              (save-excursion (insert content))))
+          (shorty-demo-record-start shorty-demo-record-initial-message)
         (message "Aborting")))
     ))
 
@@ -472,3 +475,34 @@
         (setq index i))
       (setq i (1+ i)))
     index))
+
+;; TODO make defvar
+(setq shorty-demo-record-initial-message
+    (concat "Your macro is recording.n\n"
+            "When you're finished, press C-c ) to finish.\n\n"
+            "This will save your macro into the playlist you've specified.\n\n"
+            "If you'd like to start over, press C-c ("))
+
+(defun shorty-demo-record-start (&optional message)
+  (interactive)
+  (condition-case err (end-kbd-macro) (error nil))
+  (let* ((directory (plist-get shorty-demo-editing :directory))
+         (text-prop (plist-get shorty-demo-editing :text))
+         (content  (plist-get shorty-demo-editing :text-content))
+         (message (or message  "Recording macro for shorty demo")))
+    (switch-to-buffer "*shorty-record-buffer*")
+    (with-current-buffer "*shorty-record-buffer*"
+      (kill-region (point-min) (point-max))
+      (goto-char (point-min))
+      (save-excursion (insert content))))
+  (start-kbd-macro nil)
+  (message message))
+
+(defun shorty-demo-record-end ()
+  (interactive)
+  (end-kbd-macro)
+  (message "%s" last-kbd-macro))
+
+;; TODO make this a mode
+(global-set-key (kbd "C-c (") 'shorty-demo-record-start)
+(global-set-key (kbd "C-c )") 'shorty-demo-record-end)
